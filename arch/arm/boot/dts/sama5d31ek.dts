@@ -34,6 +34,11 @@
 				};
 			};
 
+			usart1: serial@f0020000 {
+				pinctrl-0 = <&pinctrl_usart1 &pinctrl_usart1_rts_cts>;
+				status = "okay";
+			};
+
 			dbgu: serial@ffffee00 {
 				status = "okay";
 			};

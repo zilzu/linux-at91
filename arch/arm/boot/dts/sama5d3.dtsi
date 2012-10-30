@@ -17,6 +17,10 @@
 
 	aliases {
 		serial0 = &dbgu;
+		serial1 = &usart0;
+		serial2 = &usart1;
+		serial3 = &usart2;
+		serial4 = &usart3;
 		gpio0 = &pioA;
 		gpio1 = &pioB;
 		gpio2 = &pioC;
@@ -317,72 +321,72 @@
 					};
 				};
 
-				uart0 {
-					pinctrl_uart0: uart0-0 {
+				usart0 {
+					pinctrl_usart0: usart0-0 {
 						atmel,pins =
 							<3 17 0x1 0x0	/* PD17 periph A */
 							 3 18 0x1 0x1>;	/* PD18 periph A with pullup */
 					};
 
-					pinctrl_uart0_rts_cts: uart0_rts_cts-0 {
+					pinctrl_usart0_rts_cts: usart0_rts_cts-0 {
 						atmel,pins =
 							<3 15 0x1 0x0	/* PD15 periph A */
 							 3 16 0x1 0x0>;	/* PD16 periph A */
 					};
 				};
 
-				uart1 {
-					pinctrl_uart1: uart1-0 {
+				usart1 {
+					pinctrl_usart1: usart1-0 {
 						atmel,pins =
 							<1 28 0x1 0x0	/* PB28 periph A */
 							 1 29 0x1 0x1>;	/* PB29 periph A with pullup */
 					};
 
-					pinctrl_uart1_rts_cts: uart1_rts_cts-0 {
+					pinctrl_usart1_rts_cts: usart1_rts_cts-0 {
 						atmel,pins =
 							<1 26 0x1 0x0	/* PB26 periph A */
 							 1 27 0x1 0x0>;	/* PB27 periph A */
 					};
 				};
 
-				uart2 {
-					pinctrl_uart2: uart2-0 {
+				usart2 {
+					pinctrl_usart2: usart2-0 {
 						atmel,pins =
 							<4 25 0x2 0x0	/* PE25 periph B */
 							 4 26 0x2 0x1>;	/* PE26 periph B with pullup */
 					};
 
-					pinctrl_uart2_rts_cts: uart2_rts_cts-0 {
+					pinctrl_usart2_rts_cts: usart2_rts_cts-0 {
 						atmel,pins =
 							<4 23 0x2 0x0	/* PE23 periph B */
 							 4 24 0x2 0x0>;	/* PE24 periph B */
 					};
 				};
 
-				uart3 {
-					pinctrl_uart3: uart3-0 {
+				usart3 {
+					pinctrl_usart3: usart3-0 {
 						atmel,pins =
 							<4 18 0x2 0x0	/* PE18 periph B */
 							 4 19 0x2 0x1>;	/* PE19 periph B with pullup */
 					};
 
-					pinctrl_uart3_rts_cts: uart3_rts_cts-0 {
+					pinctrl_usart3_rts_cts: usart3_rts_cts-0 {
 						atmel,pins =
 							<4 16 0x2 0x0	/* PE16 periph B */
 							 4 17 0x2 0x0>;	/* PE17 periph B */
 					};
 				};
 
-				usart0 {
-					pinctrl_usart0: usart0-0 {
+				uart0 {
+					pinctrl_uart0: uart0-0 {
 						atmel,pins =
 							<3 29 0x1 0x0	/* PC29 periph A */
 							 3 30 0x1 0x1>;	/* PC30 periph A with pullup */
 					};
 				};
 
-				usart1 {
-					pinctrl_usart1: usart1-0 {
+				uart1 {
+					pinctrl_uart1: uart1-0 {
 						atmel,pins =
 							<0 30 0x2 0x0	/* PA30 periph B */
 							 0 31 0x2 0x1>;	/* PA31 periph B with pullup */
@@ -438,6 +442,24 @@
 					interrupt-controller;
 					#interrupt-cells = <2>;
 				};
+			};
+
+			usart0: serial@f001c000 {
+				compatible = "atmel,at91sam9260-usart";
+				reg = <0xf001c000 0x100>;
+				interrupts = <12 4 5>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_usart0>;
+				status = "disabled";
+			};
+
+			usart1: serial@f0020000 {
+				compatible = "atmel,at91sam9260-usart";
+				reg = <0xf0020000 0x100>;
+				interrupts = <13 4 5>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_usart1>;
+				status = "disabled";
 			};
 
 			dbgu: serial@ffffee00 {
@@ -574,6 +596,24 @@
 				dma = <&dma1 0x100022bc>;
 				#address-cells = <1>;
 				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			usart2: serial@f8020000 {
+				compatible = "atmel,at91sam9260-usart";
+				reg = <0xf8020000 0x100>;
+				interrupts = <14 4 5>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_usart2>;
+				status = "disabled";
+			};
+
+			usart3: serial@f8024000 {
+				compatible = "atmel,at91sam9260-usart";
+				reg = <0xf8024000 0x100>;
+				interrupts = <15 4 5>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_usart3>;
 				status = "disabled";
 			};
 
