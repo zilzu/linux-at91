@@ -1093,6 +1093,7 @@ static int __init atmel_pmecc_nand_init_params(struct platform_device *pdev,
 	switch (mtd->writesize) {
 	case 2048:
 	case 4096:
+	case 8192:
 		host->pmecc_degree = (sector_size == 512) ?
 			PMECC_GF_DIMENSION_13 : PMECC_GF_DIMENSION_14;
 		host->pmecc_cw_len = (1 << host->pmecc_degree) - 1;
