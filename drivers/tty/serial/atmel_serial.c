@@ -1383,6 +1383,10 @@ static void atmel_tasklet_func(unsigned long data)
 	unsigned int status;
 	unsigned int status_change;
 
+	if (!port->state || !port->state->port.tty)
+		/* port has been closed */
+		return;
+
 	/* The interrupt handler does not take the lock */
 	spin_lock(&port->lock);
 
