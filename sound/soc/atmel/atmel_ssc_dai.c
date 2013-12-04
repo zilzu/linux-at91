@@ -645,7 +645,7 @@ static int atmel_ssc_prepare(struct snd_pcm_substream *substream,
 
 	dma_params = ssc_p->dma_params[dir];
 
-	ssc_writel(ssc_p->ssc->regs, CR, dma_params->mask->ssc_enable);
+	ssc_writel(ssc_p->ssc->regs, CR, dma_params->mask->ssc_disable);
 
 	pr_debug("%s enabled SSC_SR=0x%08x\n",
 			dir ? "receive" : "transmit",
@@ -653,6 +653,33 @@ static int atmel_ssc_prepare(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static int atmel_ssc_trigger(struct snd_pcm_substream *substream,
+			     int cmd, struct snd_soc_dai *dai)
+{
+	struct atmel_ssc_info *ssc_p = &ssc_info[dai->id];
+	struct atmel_pcm_dma_params *dma_params;
+	int dir;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		dir = 0;
+	else
+		dir = 1;
+
+	dma_params = ssc_p->dma_params[dir];
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		ssc_writel(ssc_p->ssc->regs, CR, dma_params->mask->ssc_enable);
+		break;
+	default:
+		ssc_writel(ssc_p->ssc->regs, CR, dma_params->mask->ssc_disable);
+		break;
+	}
+
+	return 0;
+}
 
 #ifdef CONFIG_PM
 static int atmel_ssc_suspend(struct snd_soc_dai *cpu_dai)
@@ -727,6 +754,7 @@ static const struct snd_soc_dai_ops atmel_ssc_dai_ops = {
 	.startup	= atmel_ssc_startup,
 	.shutdown	= atmel_ssc_shutdown,
 	.prepare	= atmel_ssc_prepare,
+	.trigger	= atmel_ssc_trigger,
 	.hw_params	= atmel_ssc_hw_params,
 	.set_fmt	= atmel_ssc_set_dai_fmt,
 	.set_clkdiv	= atmel_ssc_set_dai_clkdiv,
