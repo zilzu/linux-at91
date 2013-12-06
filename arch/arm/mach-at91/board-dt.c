@@ -337,7 +337,7 @@ static void __init at91_dt_device_init(void)
 			}
 		}
 
-		np = of_find_compatible_node(NULL, NULL, "atmel,atmel_mxt_ts");
+		np = of_find_compatible_node(NULL, NULL, "atmel,sama5d3xdm_pda4");
 		if (np) {
 			if (of_device_is_available(np)) {
 				__u8 manufacturer[4] = "Inlx";
@@ -363,6 +363,29 @@ static void __init at91_dt_device_init(void)
 				ek_lcdc_data.default_monspecs->modedb->lower_margin = 2;
 				ek_lcdc_data.default_monspecs->modedb->hsync_len = 41;
 				ek_lcdc_data.default_monspecs->modedb->vsync_len = 11;
+			}
+		}
+
+		np = of_find_compatible_node(NULL, NULL, "atmel,sama5d3xdm_pda7");
+		if (np) {
+			if (of_device_is_available(np)) {
+				__u8 manufacturer[4] = "PALM";
+				__u8 monitor[14] = "AT07";
+				/* set mXT224 and QT1070 IRQ lines as inputs */
+				gpio_direction_input(AT91_PIN_PE31);
+				gpio_direction_input(AT91_PIN_PE30);
+				/* set LCD configuration */
+				memcpy(ek_lcdc_data.default_monspecs->manufacturer, manufacturer, 4);
+				memcpy(ek_lcdc_data.default_monspecs->monitor, monitor, 14);
+				ek_lcdc_data.default_monspecs->modedb->name = "PALM";
+				ek_lcdc_data.default_monspecs->modedb->left_margin = 128;
+				ek_lcdc_data.default_monspecs->modedb->right_margin = 0;
+				ek_lcdc_data.default_monspecs->modedb->upper_margin = 23;
+				ek_lcdc_data.default_monspecs->modedb->lower_margin = 22;
+				ek_lcdc_data.default_monspecs->modedb->hsync_len = 5;
+				ek_lcdc_data.default_monspecs->modedb->vsync_len = 5;
+
+				ek_lcdc_data.default_lcdcon2 = LCDC_LCDCFG5_MODE_OUTPUT_18BPP;
 			}
 		}
 	} else if (of_machine_is_compatible("atmel,at91sam9x5ek")) {

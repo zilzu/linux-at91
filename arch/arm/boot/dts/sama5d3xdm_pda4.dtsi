@@ -1,8 +1,8 @@
 /*
- * sama5d3pda.dtsi - Device Tree file for SAMA5 PDA display module
+ * sama5d3xdm_pda4.dtsi - Device Tree file for SAMA5 display module
  *
- *  Copyright (C) 2012 Atmel,
- *                2012 Ludovic Desroches <ludovic.desroches@atmel.com>
+ *  Copyright (C) 2014 Atmel,
+ *                2014 Ludovic Desroches <ludovic.desroches@atmel.com>
  *
  * Licensed under GPLv2 or later.
  */
@@ -18,6 +18,7 @@
 					interrupts = <30 0x0>;
 					pinctrl-names = "default";
 					pinctrl-0 = <&pinctrl_qt1070_irq>;
+					wakeup-source;
 				};
 
 				atmel_mxt_ts@4a {
@@ -27,15 +28,14 @@
 					interrupts = <31 0x0>;
 					pinctrl-names = "default";
 					pinctrl-0 = <&pinctrl_mxt_ts>;
-					x_line = <19>;
-					y_line = <11>;
-					x_size = <1024>;
-					y_size = <1024>;
-					blen = <0x0>;
-					threshold = <0x23>;
-					voltage = <3300000>;
-					orient = <0x00>;
 				};
+			};
+
+			adc0: adc@f8018000 {
+				atmel,adc-clock-rate = <1000000>;
+				atmel,adc-ts-wires = <4>;
+				atmel,adc-ts-pressure-threshold = <10000>;
+				status = "okay";
 			};
 
 			lcd_bus@f0030000 {
@@ -62,12 +62,12 @@
 				board {
 					pinctrl_qt1070_irq: qt1070_irq {
 						atmel,pins =
-							<4 30 0x0 0x5>; /* PE31 GPIO with pull up deglith */
+							<4 30 0 5>; /* PE30 GPIO with pull up deglith */
 					};
 
 					pinctrl_mxt_ts: mxt_irq {
 						atmel,pins =
-							<4 31 0x0 0x5>; /* PE31 gpio with pullup deglitch */
+							<4 31 0 5>; /* PE31 GPIO with pull up deglith */
 					};
 				};
 			};
