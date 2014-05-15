@@ -120,7 +120,7 @@
 			};
 
 			mmc0: mmc@fffa4000 {
-				compatible = "atmel,hsmci";
+				compatible = "atmel,at91sam9rl-mci";
 				reg = <0xfffa4000 0x600>;
 				interrupts = <10 IRQ_TYPE_LEVEL_HIGH 0>;
 				#address-cells = <1>;
