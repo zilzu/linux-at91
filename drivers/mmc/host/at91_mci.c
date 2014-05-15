@@ -57,6 +57,8 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/ioport.h>
+#include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/interrupt.h>
 #include <linux/blkdev.h>
@@ -923,6 +925,77 @@ static const struct mmc_host_ops at91_mci_ops = {
 	.enable_sdio_irq = at91_mci_enable_sdio_irq,
 };
 
+#if defined(CONFIG_OF)
+static const struct of_device_id at91_mci_dt_ids[] = {
+	{ .compatible = "atmel,at91sam9rl-mci" },
+	{ /* sentinel */ }
+};
+
+MODULE_DEVICE_TABLE(of, at91_mci_dt_ids);
+
+static struct at91_mmc_data*
+at91_mci_of_init(struct platform_device *pdev)
+{
+	struct device_node *np = pdev->dev.of_node;
+	struct device_node *cnp;
+	struct at91_mmc_data *pdata;
+	u32 slot_id;
+	u32 bus_width = 0;
+
+	if (!np) {
+		dev_err(&pdev->dev, "device node not found\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		dev_err(&pdev->dev, "could not allocate memory for pdata\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	for_each_child_of_node(np, cnp) {
+		if (of_property_read_u32(cnp, "reg", &slot_id)) {
+			dev_warn(&pdev->dev, "reg property is missing for %s\n",
+				 cnp->full_name);
+			continue;
+		}
+
+		if (slot_id > 0) {
+			pdata->slot_b = 1;
+		}
+
+		of_property_read_u32(cnp, "bus-width", &bus_width);
+		if (bus_width != 4)
+			pdata->wire4 = 0;
+		else
+			pdata->wire4 = 1;
+
+		pdata->det_pin =
+			of_get_named_gpio(cnp, "cd-gpios", 0);
+
+		pdata->wp_pin =
+			of_get_named_gpio(cnp, "wp-gpios", 0);
+
+		/*
+		 * This is handled by regulator: this driver is wrong!
+		 * So disable the feature
+		 */
+		pdata->vcc_pin = -1;
+
+		/* We handle a single slot: exit now! */
+		return pdata;
+	}
+
+	return pdata;
+}
+#else /* CONFIG_OF */
+static inline struct at91_mmc_data*
+at91_mci_of_init(struct platform_device *dev)
+{
+	return ERR_PTR(-EINVAL);
+}
+#endif
+
 /*
  * Probe for the device
  */
@@ -962,7 +1035,17 @@ static int __init at91_mci_probe(struct platform_device *pdev)
 	host = mmc_priv(mmc);
 	host->mmc = mmc;
 	host->bus_mode = 0;
+
 	host->board = pdev->dev.platform_data;
+	if (!host->board) {
+		host->board = at91_mci_of_init(pdev);
+		if (IS_ERR(host->board)) {
+			dev_err(&pdev->dev, "platform data not available\n");
+			ret = PTR_ERR(host->board);
+			goto fail5;
+		}
+	}
+
 	if (host->board->wire4) {
 		if (at91mci_is_mci1rev2xx())
 			mmc->caps |= MMC_CAP_4_BIT_DATA;
@@ -1160,6 +1243,7 @@ static struct platform_driver at91_mci_driver = {
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
+		.of_match_table	= of_match_ptr(at91_mci_dt_ids),
 	},
 };
 
