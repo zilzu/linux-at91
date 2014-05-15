@@ -1159,7 +1159,10 @@ static int __init at91_mci_probe(struct platform_device *pdev)
 			device_init_wakeup(&pdev->dev, 1);
 	}
 
-	pr_debug("Added MCI driver\n");
+	dev_info(&pdev->dev,
+			"AT91 MCI controller at %p irq %d, on slot %c, %d wire\n",
+			host->baseaddr, host->irq,
+			host->board->slot_b ? 'B':'A', host->board->wire4 ? 4 : 1);
 
 	return 0;
 
