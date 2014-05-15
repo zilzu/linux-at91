@@ -1155,45 +1155,8 @@ static int __exit at91_mci_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int at91_mci_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	struct mmc_host *mmc = platform_get_drvdata(pdev);
-	struct at91mci_host *host = mmc_priv(mmc);
-	int ret = 0;
-
-	if (gpio_is_valid(host->board->det_pin) && device_may_wakeup(&pdev->dev))
-		enable_irq_wake(host->board->det_pin);
-
-	if (mmc)
-		ret = mmc_suspend_host(mmc);
-
-	return ret;
-}
-
-static int at91_mci_resume(struct platform_device *pdev)
-{
-	struct mmc_host *mmc = platform_get_drvdata(pdev);
-	struct at91mci_host *host = mmc_priv(mmc);
-	int ret = 0;
-
-	if (gpio_is_valid(host->board->det_pin) && device_may_wakeup(&pdev->dev))
-		disable_irq_wake(host->board->det_pin);
-
-	if (mmc)
-		ret = mmc_resume_host(mmc);
-
-	return ret;
-}
-#else
-#define at91_mci_suspend	NULL
-#define at91_mci_resume		NULL
-#endif
-
 static struct platform_driver at91_mci_driver = {
 	.remove		= __exit_p(at91_mci_remove),
-	.suspend	= at91_mci_suspend,
-	.resume		= at91_mci_resume,
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
