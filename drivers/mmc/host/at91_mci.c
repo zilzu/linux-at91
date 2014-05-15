@@ -1034,7 +1034,7 @@ static int __init at91_mci_probe(struct platform_device *pdev)
 	/*
 	 * Reset hardware
 	 */
-	clk_enable(host->mci_clk);		/* Enable the peripheral clock */
+	clk_prepare_enable(host->mci_clk);		/* Enable the peripheral clock */
 	at91_mci_disable(host);
 	at91_mci_enable(host);
 
@@ -1081,7 +1081,7 @@ static int __init at91_mci_probe(struct platform_device *pdev)
 	return 0;
 
 fail0:
-	clk_disable(host->mci_clk);
+	clk_disable_unprepare(host->mci_clk);
 	iounmap(host->baseaddr);
 fail1:
 	clk_put(host->mci_clk);
@@ -1136,7 +1136,7 @@ static int __exit at91_mci_remove(struct platform_device *pdev)
 	mmc_remove_host(mmc);
 	free_irq(host->irq, host);
 
-	clk_disable(host->mci_clk);			/* Disable the peripheral clock */
+	clk_disable_unprepare(host->mci_clk);		/* Disable the peripheral clock */
 	clk_put(host->mci_clk);
 
 	if (gpio_is_valid(host->board->vcc_pin))
