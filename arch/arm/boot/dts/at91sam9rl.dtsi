@@ -483,15 +483,15 @@
 
 					pinctrl_mmc0_slot0_cmd_dat0: mmc0_slot0_cmd_dat0-0 {
 						atmel,pins =
-							<AT91_PIOA 0 AT91_PERIPH_A AT91_PINCTRL_PULL_UP>,
-							<AT91_PIOA 1 AT91_PERIPH_A AT91_PINCTRL_PULL_UP>;
+							<AT91_PIOA 0 AT91_PERIPH_A AT91_PINCTRL_NONE>,
+							<AT91_PIOA 1 AT91_PERIPH_A AT91_PINCTRL_NONE>;
 					};
 
 					pinctrl_mmc0_slot0_dat1_3: mmc0_slot0_dat1_3-0 {
 						atmel,pins =
-							<AT91_PIOA 3 AT91_PERIPH_A AT91_PINCTRL_PULL_UP>,
-							<AT91_PIOA 4 AT91_PERIPH_A AT91_PINCTRL_PULL_UP>,
-							<AT91_PIOA 5 AT91_PERIPH_A AT91_PINCTRL_PULL_UP>;
+							<AT91_PIOA 3 AT91_PERIPH_A AT91_PINCTRL_NONE>,
+							<AT91_PIOA 4 AT91_PERIPH_A AT91_PINCTRL_NONE>,
+							<AT91_PIOA 5 AT91_PERIPH_A AT91_PINCTRL_NONE>;
 					};
 				};
 
