@@ -348,12 +348,12 @@ static int atmel_lcdfb_set_par(struct fb_info *info)
 	bits_per_line = info->var.xres_virtual * info->var.bits_per_pixel;
 	info->fix.line_length = DIV_ROUND_UP(bits_per_line, 8);
 
+	/* Now, the LCDC core... */
+	sinfo->dev_data->setup_core(info);
+
 	/* Re-initialize the DMA engine... */
 	dev_dbg(info->device, "  * update DMA engine\n");
 	sinfo->dev_data->update_dma(info, &info->var);
-
-	/* Now, the LCDC core... */
-	sinfo->dev_data->setup_core(info);
 
 	if (sinfo->dev_data->start)
 		sinfo->dev_data->start(sinfo);
