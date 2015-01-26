@@ -309,13 +309,13 @@ sdr_sr_done:
 
 	/* Turn on UTMI PLL */
 	cmp	flag, #1
-	bne	1f
+	bne	3f
 	ldr	tmp1, [pmc, #AT91_CKGR_UCKR]
 	orr	tmp1, tmp1, #AT91_PMC_UPLLEN
 	str	tmp1, [pmc, #AT91_CKGR_UCKR]
 
 	wait_uplllock
-1:
+3:
 
 	/* Restore PLLB setting */
 	ldr	tmp1, .saved_pllbr
