@@ -76,10 +76,10 @@ tmp2	.req	r5
 	.macro _do_wfi
 
 #if defined(CONFIG_CPU_V7)
-	dsb
-
 	mov	tmp1, #AT91_PMC_PCK
 	str	tmp1, [pmc, #AT91_PMC_SCDR]
+
+	dsb
 
 	wfi		@ Wait For Interrupt
 #else
