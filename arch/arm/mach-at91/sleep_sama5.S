@@ -10,101 +10,6 @@
 #include <mach/at91sam9_ddrsdr.h>
 
 /*
- * void at91_cortexa5_do_wfi(void)
- *
- * This function is to disable the Processor Clock
- * and put the core to the WFI state.
- */
-ENTRY(at91_cortexa5_do_wfi)
-	stmfd	sp!, {lr}
-
-	/*
-	 * Execute an ISB instruction to ensure that all of the
-	 * CP15 register changes have been committed.
-	 */
-	isb
-
-	/*
-	 * Execute a barrier instruction to ensure that all cache,
-	 * TLB and branch predictor maintenance operations issued
-	 * by any CPU in the cluster have completed.
-	 */
-	dsb
-	dmb
-
-	/* Disable the Processor Clock */
-	bl	at91_get_pmc_base
-	mov	r2, r0
-	mov	r1, #AT91_PMC_PCK
-	str	r1, [r2, #AT91_PMC_SCDR]
-
-	/*
-	 * Execute a WFI instruction and wait until the
-	 * STANDBYWFI output is asserted to indicate that the
-	 * CPU is in idle and low power state. CPU can specualatively
-	 * prefetch the instructions so add NOPs after WFI. Sixteen
-	 * NOPs as per Cortex-A5 pipeline.
-	 */
-	wfi	@ Wait For Interrupt
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-	nop
-
-	ldmfd	sp!, {pc}
-ENDPROC(at91_cortexa5_do_wfi)
-
-/*
- * unsigned int at91_ddrc_enter_self_refresh(void)
- *
- * The function is to put the DDR SDRAM to enter the self-refresh mode
- *  @return: DDRC low-power register setting.
- */
-ENTRY(at91_ddrc_enter_self_refresh)
-	stmfd	sp!, {r4 - r12, lr}
-
-	bl	at91_get_ramc0_base
-	mov	r2, r0
-	ldr	r1, [r2, #AT91_DDRSDRC_LPR]
-	mov	r0, r1
-	bic	r1, #AT91_DDRSDRC_LPCB
-	orr	r1, #AT91_DDRSDRC_LPCB_SELF_REFRESH
-	str	r1, [r2, #AT91_DDRSDRC_LPR]
-
-	ldmfd	sp!, {r4 - r12, pc}
-ENDPROC(at91_ddrc_enter_self_refresh)
-
-/*
- * void at91_ddrc_exit_self_refresh(unsigned int lpr_setting)
- *
- * The funtion is to make the DDR SDRAM exit the self-refresh mode.
- * @lpr_setting: DDRC low-power register setting.
- */
-
-ENTRY(at91_ddrc_exit_self_refresh)
-	stmfd	sp!, {r4 - r12, lr}
-
-	mov	r1, r0
-	bl	at91_get_ramc0_base
-	mov	r2, r0
-	str	r1, [r2, #AT91_DDRSDRC_LPR]
-
-	ldmfd	sp!, {r4 - r12, pc}
-ENDPROC(at91_ddrc_exit_self_refresh)
-
-/*
  * void at91_cortexa5_standby(void)
  *
  * The function is to make the core perform suspend to standby mode.
@@ -112,13 +17,38 @@ ENDPROC(at91_ddrc_exit_self_refresh)
 ENTRY(at91_cortexa5_standby)
 	stmfd	sp!, {r4 - r12, lr}
 
-	bl	at91_ddrc_enter_self_refresh
-	push	{r0}
+	/* Save LPR register */
+	ldr     r1, .ddrc_base
+	ldr	r0, [r1, #AT91_DDRSDRC_LPR]
+	str	r0, .saved_lpr
 
-	bl	at91_cortexa5_do_wfi
+	/* Active DDR device enter the self-refresh mode */
+	bic	r0, #AT91_DDRSDRC_LPCB
+	orr	r0, #AT91_DDRSDRC_LPCB_SELF_REFRESH
+	str	r0, [r1, #AT91_DDRSDRC_LPR]
 
-	pop	{r0}
-	bl	at91_ddrc_exit_self_refresh
+	/* Disable the processor's clock */
+	ldr     r1, .pmc_base
+	mov	r0, #AT91_PMC_PCK
+	str	r0, [r1, #AT91_PMC_SCDR]
+
+	dsb
+
+	wfi	@ Wait For Interrupt
+
+	/* Restore LPR register to exit the self-refresh mode */
+	ldr     r1, .ddrc_base
+	ldr	r0, .saved_lpr
+	str	r0, [r1, #AT91_DDRSDRC_LPR]
 
 	ldmfd	sp!, {r4 - r12, pc}
 ENDPROC(at91_cortexa5_standby)
+
+.ddrc_base:
+	.word   at91_ramc_base
+
+.pmc_base:
+	.word	at91_pmc_base
+
+.saved_lpr:
+	.word	0
