@@ -126,7 +126,5 @@ static inline void at91sam_ddrc_standby(void)
 }
 
 void __weak at91_cortexa5_standby(void) {}
-void __weak at91_cortexa5_disable_cache(void) {}
-void __weak at91_cortexa5_enable_cache(void) {}
 
 #endif

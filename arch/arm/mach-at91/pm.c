@@ -24,6 +24,7 @@
 #include <linux/atomic.h>
 #include <asm/mach/time.h>
 #include <asm/mach/irq.h>
+#include <asm/cacheflush.h>
 
 #include <mach/at91_pmc.h>
 #include <mach/cpu.h>
@@ -323,14 +324,15 @@ static int at91_pm_enter(suspend_state_t state)
 				memcpy(sram_pm_suspend, at91_slow_clock,
 							at91_slow_clock_sz);
 
-				at91_cortexa5_disable_cache();
+				flush_cache_all();
+				outer_disable();
 
 				sram_pm_suspend(at91_get_pmc_base(),
 							at91_get_ramc0_base(),
 							at91_get_ramc1_base(),
 							memctrl);
 
-				at91_cortexa5_enable_cache();
+				outer_resume();
 			}
 
 			if (pllb_enabled)
@@ -357,20 +359,27 @@ static int at91_pm_enter(suspend_state_t state)
 			 * For ARM 926 based chips, this requirement is weaker
 			 * as at91sam9 can access a RAM in self-refresh mode.
 			 */
-			if (cpu_is_at91rm9200())
+			if (cpu_is_at91rm9200()) {
 				at91rm9200_standby();
-			else if (cpu_is_at91sam9g45())
+			} else if (cpu_is_at91sam9g45()) {
 				at91sam9g45_standby();
-			else if (cpu_is_at91sam9263())
+			} else if (cpu_is_at91sam9263()) {
 				at91sam9263_standby();
-			else if (cpu_is_at91sam9x5()
-				|| cpu_is_at91sam9n12())
+			} else if (cpu_is_at91sam9x5()
+				|| cpu_is_at91sam9n12()) {
 				at91sam_ddrc_standby();
-			else if (cpu_is_sama5d3()
-				|| cpu_is_sama5d4())
+			} else if (cpu_is_sama5d3()
+				|| cpu_is_sama5d4()) {
+
+				flush_cache_all();
+				outer_disable();
+
 				at91_cortexa5_standby();
-			else
+
+				outer_resume();
+			} else {
 				at91sam9_standby();
+			}
 			break;
 
 		case PM_SUSPEND_ON:
