@@ -57,7 +57,7 @@ struct ssc_device *ssc_request(unsigned int ssc_num)
 	ssc->user++;
 	spin_unlock(&user_lock);
 
-	clk_prepare_enable(ssc->clk);
+	clk_prepare(ssc->clk);
 
 	return ssc;
 }
@@ -77,7 +77,7 @@ void ssc_free(struct ssc_device *ssc)
 	spin_unlock(&user_lock);
 
 	if (disable_clk)
-		clk_disable_unprepare(ssc->clk);
+		clk_unprepare(ssc->clk);
 }
 EXPORT_SYMBOL(ssc_free);
 
@@ -243,8 +243,6 @@ static int atmel_ssc_suspend(struct platform_device *pdev, pm_message_t mesg)
 	struct ssc_device *ssc = platform_get_drvdata(pdev);
 	int ret;
 
-	clk_disable_unprepare(ssc->clk);
-
 	if (!IS_ERR(ssc->pins_sleep)) {
 		ret = pinctrl_select_state(ssc->pinctrl, ssc->pins_sleep);
 		if (ret)
@@ -259,8 +257,6 @@ static int atmel_ssc_resume(struct platform_device *pdev)
 {
 	struct ssc_device *ssc = platform_get_drvdata(pdev);
 	int ret;
-
-	clk_prepare_enable(ssc->clk);
 
 	/* First go to the default state */
 	if (!IS_ERR(ssc->pins_default)) {
