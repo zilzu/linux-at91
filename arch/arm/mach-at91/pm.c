@@ -273,7 +273,7 @@ static void at91_enable_utmi_pll(u32 ckgr_uckr)
 static int at91_pm_enter(suspend_state_t state)
 {
 #ifdef CONFIG_AT91_SLOW_CLOCK
-	unsigned int memctrl = (at91_get_memc_id() << AT91_MEMCTRL_ID_SHIFT)
+	unsigned int memctrl = AT91_MEMCTRL_PID(at91_get_memc_id())
 				| at91_get_mem_type();
 	bool pllb_enabled, upll_enabled;
 	u32 pllbr = 0, ckgr_uckr = 0;
