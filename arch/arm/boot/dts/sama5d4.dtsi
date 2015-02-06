@@ -28,6 +28,7 @@
 		gpio4 = &pioE;
 		tcb0 = &tcb0;
 		tcb1 = &tcb1;
+		i2c1 = &i2c1;
 		i2c2 = &i2c2;
 		ssc0 = &ssc0;
 		ssc1 = &ssc1;
@@ -207,6 +208,24 @@
 				dma-names = "tx", "rx";
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_i2c0>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+				status = "disabled";
+			};
+
+			i2c1: i2c@f8018000 {
+				compatible = "atmel,at91sam9x5-i2c";
+				reg = <0xf8018000 0x4000>;
+				interrupts = <33 IRQ_TYPE_LEVEL_HIGH 6>;
+				dmas = <&dma1
+					(AT91_XDMAC_DT_MEM_IF(0) | AT91_XDMAC_DT_PER_IF(1))
+					AT91_XDMAC_DT_PERID(4)>,
+				       <&dma1
+					(AT91_XDMAC_DT_MEM_IF(0) | AT91_XDMAC_DT_PER_IF(1))
+					AT91_XDMAC_DT_PERID(5)>;
+				dma-names = "tx", "rx";
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_i2c1>;
 				#address-cells = <1>;
 				#size-cells = <0>;
 				status = "disabled";
@@ -540,6 +559,15 @@
 							 AT91_PIOA 31 AT91_PERIPH_A AT91_PINCTRL_NONE>;
 					};
 				};
+
+				i2c1 {
+					pinctrl_i2c1: i2c1-0 {
+						atmel,pins =
+							<AT91_PIOE 29 AT91_PERIPH_C AT91_PINCTRL_NONE
+							 AT91_PIOE 30 AT91_PERIPH_C AT91_PINCTRL_NONE>;
+					};
+				};
+
 
 				i2c2 {
 					pinctrl_i2c2: i2c2-0 {
