@@ -224,6 +224,28 @@ static unsigned int at91_get_mem_type(void)
 
 	return memtype;
 }
+
+static bool at91_disable_pllb(u32 *pllbr)
+{
+	if (at91_pmc_read(AT91_PMC_SR) & AT91_PMC_LOCKB) {
+		*pllbr = at91_pmc_read(AT91_CKGR_PLLBR);
+
+		at91_pmc_write(AT91_CKGR_PLLBR, AT91_PMC_PLLCOUNT);
+
+		while ((at91_pmc_read(AT91_PMC_SR) & AT91_PMC_LOCKB));
+
+		return true;
+	}
+
+	return false;
+}
+
+static void at91_enable_pllb(u32 pllbr)
+{
+	at91_pmc_write(AT91_CKGR_PLLBR, pllbr);
+
+	while (!(at91_pmc_read(AT91_PMC_SR) & AT91_PMC_LOCKB));
+}
 #endif	/* #ifdef CONFIG_AT91_SLOW_CLOCK */
 
 static int at91_pm_enter(suspend_state_t state)
@@ -231,6 +253,8 @@ static int at91_pm_enter(suspend_state_t state)
 #ifdef CONFIG_AT91_SLOW_CLOCK
 	unsigned int memctrl = (at91_get_memc_id() << AT91_MEMCTRL_ID_SHIFT)
 				| at91_get_mem_type();
+	bool pllb_enabled;
+	u32 pllbr = 0;
 #endif
 
 	if (of_have_populated_dt())
@@ -262,6 +286,8 @@ static int at91_pm_enter(suspend_state_t state)
 			if (!at91_pm_verify_clocks())
 				goto error;
 
+			pllb_enabled = at91_disable_pllb(&pllbr);
+
 			/*
 			 * Enter slow clock mode by switching over to clk32k and
 			 * turning off the main oscillator; reverse on wakeup.
@@ -280,6 +306,9 @@ static int at91_pm_enter(suspend_state_t state)
 
 				at91_cortexa5_enable_cache();
 			}
+
+			if (pllb_enabled)
+				at91_enable_pllb(pllbr);
 
 			break;
 #endif

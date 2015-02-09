@@ -70,15 +70,6 @@ flag	.req	r7
 	.endm
 
 /*
- * Wait until PLLB has locked.
- */
-	.macro wait_pllblock
-1:	ldr	tmp1, [pmc, #AT91_PMC_SR]
-	tst	tmp1, #AT91_PMC_LOCKB
-	beq	1b
-	.endm
-
-/*
  * Wait until UTMI PLL has locked.
  */
 	.macro wait_uplllock
@@ -225,13 +216,6 @@ sdr_sr_done:
 	mov 	tmp1, #AT91_PMC_SYS_DDR
 	str	tmp1, [pmc, #AT91_PMC_SCDR]
 
-	/* Save PLLB setting and disable it */
-	ldr	tmp1, [pmc, #AT91_CKGR_PLLBR]
-	str	tmp1, .saved_pllbr
-
-	mov	tmp1, #AT91_PMC_PLLCOUNT
-	str	tmp1, [pmc, #AT91_CKGR_PLLBR]
-
 	/* Disable UTMI PLL */
 	ldr	tmp1, [pmc, #AT91_CKGR_UCKR]
 	tst	tmp1, #AT91_PMC_UPLLEN
@@ -339,18 +323,6 @@ sdr_sr_done:
 	wait_uplllock
 3:
 
-	/* Restore PLLB setting */
-	ldr	tmp1, .saved_pllbr
-	str	tmp1, [pmc, #AT91_CKGR_PLLBR]
-
-	tst	tmp1, #(AT91_PMC_MUL &  0xff0000)
-	bne	1f
-	tst	tmp1, #(AT91_PMC_MUL & ~0xff0000)
-	beq	2f
-1:
-	wait_pllblock
-2:
-
 	/* Enable MPDDRC Clock*/
 	cmp	ddrcid, #0
 	beq	4f
@@ -416,9 +388,6 @@ ram_restored:
 	.word 0
 
 .saved_pllar:
-	.word 0
-
-.saved_pllbr:
 	.word 0
 
 .saved_sam9_lpr:
