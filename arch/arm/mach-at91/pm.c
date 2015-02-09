@@ -308,6 +308,9 @@ static int at91_pm_enter(suspend_state_t state)
 			if (!at91_pm_verify_clocks())
 				goto error;
 
+			if (cpu_is_sama5d4())
+				memctrl |= AT91_MEMCTRL_IS_SAMA5D4(AT91_MEMCTRL_SAMA5D4_BIT);
+
 			pllb_enabled = at91_disable_pllb(&pllbr);
 			upll_enabled = at91_disable_utmi_pll(&ckgr_uckr);
 

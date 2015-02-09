@@ -118,6 +118,10 @@ ENTRY(at91_slow_clock)
 	and	r0, r0, #AT91_MEMCTRL_PID_MASK
 	str	r0, .ddrc_pid
 
+	lsr	r0, r3, #AT91_MEMCTRL_SAMA5D4_OFFSET
+	and	r0, r0, #AT91_MEMCTRL_SAMA5D4_MASK
+	str	r0, .sama5d4_bit
+
 	/* Drain write buffer */
 	mov	tmp1, #0
 	mcr	p15, 0, tmp1, c7, c10, 4
@@ -126,9 +130,15 @@ ENTRY(at91_slow_clock)
 	mov	r0, #SRAMC_SELF_REFRESH_ACTIVE
 	bl	at91_sramc_self_refresh
 
+	/* If the cpu isn't sama5d4, disable the ddr clock here */
+	ldr	r0, .sama5d4_bit
+	tst	r0, #AT91_MEMCTRL_SAMA5D4_BIT
+	bne	skip_ddr_clock
+
 	/* Disable DDR clock */
 	mov	r0, #DDR_CLOCK_DISABLE
 	bl	at91_ddr_clock
+skip_ddr_clock:
 
 	/* Load the the PMC base address */
 	ldr	pmc, .pmc_base
@@ -170,6 +180,19 @@ ENTRY(at91_slow_clock)
 	bic	tmp1, tmp1, #AT91_PMC_MOSCEN
 	orr	tmp1, tmp1, #AT91_PMC_KEY
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
+
+	/* If the cpu is the sama5d4, disable the ddr clock here */
+	ldr	r0, .sama5d4_bit
+	tst	r0, #AT91_MEMCTRL_SAMA5D4_BIT
+	beq	skip_postpone_ddr_clock
+
+	/* Disable DDR clock */
+	mov	r0, #DDR_CLOCK_DISABLE
+	bl	at91_ddr_clock
+skip_postpone_ddr_clock:
+
+	/* Load the the PMC base address */
+	ldr	pmc, .pmc_base
 
 	/* Wait for interrupt */
 	_do_wfi
@@ -410,6 +433,8 @@ ENDPROC(at91_ddr_clock)
 .memtype:
 	.word 0
 .ddrc_pid:
+	.word 0
+.sama5d4_bit:
 	.word 0
 .saved_mckr:
 	.word 0
