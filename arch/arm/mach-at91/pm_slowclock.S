@@ -40,7 +40,6 @@ memctrl	.req	r3
 tmp1	.req	r4
 tmp2	.req	r5
 ddrcid	.req	r6
-flag	.req	r7
 
 /*
  * Wait until master clock is ready (after switching master clock source)
@@ -66,15 +65,6 @@ flag	.req	r7
 	.macro wait_pllalock
 1:	ldr	tmp1, [pmc, #AT91_PMC_SR]
 	tst	tmp1, #AT91_PMC_LOCKA
-	beq	1b
-	.endm
-
-/*
- * Wait until UTMI PLL has locked.
- */
-	.macro wait_uplllock
-1:	ldr	tmp1, [pmc, #AT91_PMC_SR]
-	tst	tmp1, #AT91_PMC_LOCKU
 	beq	1b
 	.endm
 
@@ -216,18 +206,6 @@ sdr_sr_done:
 	mov 	tmp1, #AT91_PMC_SYS_DDR
 	str	tmp1, [pmc, #AT91_PMC_SCDR]
 
-	/* Disable UTMI PLL */
-	ldr	tmp1, [pmc, #AT91_CKGR_UCKR]
-	tst	tmp1, #AT91_PMC_UPLLEN
-	beq	1f
-	mov	flag, #1
-	bic	tmp1, tmp1, #AT91_PMC_UPLLEN
-	str	tmp1, [pmc, #AT91_CKGR_UCKR]
-	b	2f
-1:
-	mov	flag, #0
-2:
-
 	/* Save Master clock setting */
 	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
 	str	tmp1, .saved_mckr
@@ -312,16 +290,6 @@ sdr_sr_done:
 	str	tmp1, [pmc, #AT91_PMC_MCKR]
 
 	wait_mckrdy
-
-	/* Turn on UTMI PLL */
-	cmp	flag, #1
-	bne	3f
-	ldr	tmp1, [pmc, #AT91_CKGR_UCKR]
-	orr	tmp1, tmp1, #AT91_PMC_UPLLEN
-	str	tmp1, [pmc, #AT91_CKGR_UCKR]
-
-	wait_uplllock
-3:
 
 	/* Enable MPDDRC Clock*/
 	cmp	ddrcid, #0
