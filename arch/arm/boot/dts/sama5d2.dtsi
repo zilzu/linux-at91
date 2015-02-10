@@ -284,6 +284,7 @@
 			atmel,nand-cmd-offset = <22>;
 			atmel,nand-has-dma;
 			atmel,has-pmecc;
+			clocks = <&hsmc_clk>;
 			atmel,pmecc-lookup-table-offset = <0x0 0x8000>;
 			status = "disabled";
 
@@ -298,7 +299,6 @@
 					/* NFC SRAM banks */
 					0x00100000 0x00100000
 					>;
-				clocks = <&hsmc_clk>;
 				atmel,write-by-sram;
 			};
 		};
