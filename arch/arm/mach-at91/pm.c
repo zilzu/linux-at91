@@ -24,6 +24,7 @@
 #include <linux/atomic.h>
 #include <asm/mach/time.h>
 #include <asm/mach/irq.h>
+#include <asm/cacheflush.h>
 
 #include <mach/at91_pmc.h>
 #include <mach/cpu.h>
@@ -273,7 +274,7 @@ static void at91_enable_utmi_pll(u32 ckgr_uckr)
 static int at91_pm_enter(suspend_state_t state)
 {
 #ifdef CONFIG_AT91_SLOW_CLOCK
-	unsigned int memctrl = (at91_get_memc_id() << AT91_MEMCTRL_ID_SHIFT)
+	unsigned int memctrl = AT91_MEMCTRL_PID(at91_get_memc_id())
 				| at91_get_mem_type();
 	bool pllb_enabled, upll_enabled;
 	u32 pllbr = 0, ckgr_uckr = 0;
@@ -308,6 +309,9 @@ static int at91_pm_enter(suspend_state_t state)
 			if (!at91_pm_verify_clocks())
 				goto error;
 
+			if (cpu_is_sama5d4())
+				memctrl |= AT91_MEMCTRL_IS_SAMA5D4(AT91_MEMCTRL_SAMA5D4_BIT);
+
 			pllb_enabled = at91_disable_pllb(&pllbr);
 			upll_enabled = at91_disable_utmi_pll(&ckgr_uckr);
 
@@ -320,14 +324,15 @@ static int at91_pm_enter(suspend_state_t state)
 				memcpy(sram_pm_suspend, at91_slow_clock,
 							at91_slow_clock_sz);
 
-				at91_cortexa5_disable_cache();
+				flush_cache_all();
+				outer_disable();
 
 				sram_pm_suspend(at91_get_pmc_base(),
 							at91_get_ramc0_base(),
 							at91_get_ramc1_base(),
 							memctrl);
 
-				at91_cortexa5_enable_cache();
+				outer_resume();
 			}
 
 			if (pllb_enabled)
@@ -354,20 +359,27 @@ static int at91_pm_enter(suspend_state_t state)
 			 * For ARM 926 based chips, this requirement is weaker
 			 * as at91sam9 can access a RAM in self-refresh mode.
 			 */
-			if (cpu_is_at91rm9200())
+			if (cpu_is_at91rm9200()) {
 				at91rm9200_standby();
-			else if (cpu_is_at91sam9g45())
+			} else if (cpu_is_at91sam9g45()) {
 				at91sam9g45_standby();
-			else if (cpu_is_at91sam9263())
+			} else if (cpu_is_at91sam9263()) {
 				at91sam9263_standby();
-			else if (cpu_is_at91sam9x5()
-				|| cpu_is_at91sam9n12())
+			} else if (cpu_is_at91sam9x5()
+				|| cpu_is_at91sam9n12()) {
 				at91sam_ddrc_standby();
-			else if (cpu_is_sama5d3()
-				|| cpu_is_sama5d4())
+			} else if (cpu_is_sama5d3()
+				|| cpu_is_sama5d4()) {
+
+				flush_cache_all();
+				outer_disable();
+
 				at91_cortexa5_standby();
-			else
+
+				outer_resume();
+			} else {
 				at91sam9_standby();
+			}
 			break;
 
 		case PM_SUSPEND_ON:

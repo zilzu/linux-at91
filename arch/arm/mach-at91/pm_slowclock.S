@@ -33,13 +33,15 @@
  */
 #undef SLOWDOWN_MASTER_CLOCK
 
+#define	SRAMC_SELF_REFRESH_ACTIVE	0x01
+#define	SRAMC_SELF_REFRESH_EXIT		0x00
+
+#define	DDR_CLOCK_ENABLE		0x01
+#define	DDR_CLOCK_DISABLE		0x00
+
 pmc	.req	r0
-sdramc	.req	r1
-ramc1	.req	r2
-memctrl	.req	r3
 tmp1	.req	r4
 tmp2	.req	r5
-ddrcid	.req	r6
 
 /*
  * Wait until master clock is ready (after switching master clock source)
@@ -74,10 +76,10 @@ ddrcid	.req	r6
 	.macro _do_wfi
 
 #if defined(CONFIG_CPU_V7)
-	dsb
-
 	mov	tmp1, #AT91_PMC_PCK
 	str	tmp1, [pmc, #AT91_PMC_SCDR]
+
+	dsb
 
 	wfi		@ Wait For Interrupt
 #else
@@ -103,108 +105,43 @@ ENTRY(at91_slow_clock)
 	 *  R3 = Memory controller related info
 	 *  R4 = temporary register
 	 *  R5 = temporary register
-	 *  R6 = Memory controller's peripherial ID
-	 *  R7 = temporary indicator
 	 */
+
+	str	r0, .pmc_base
+	str	r1, .sramc_base
+	str	r2, .sramc1_base
+
+	and	r0, r3, #AT91_MEMCTRL_MASK
+	str	r0, .memtype
+
+	lsr	r0, r3, #AT91_MEMCTRL_PID_OFFSET
+	and	r0, r0, #AT91_MEMCTRL_PID_MASK
+	str	r0, .ddrc_pid
+
+	lsr	r0, r3, #AT91_MEMCTRL_SAMA5D4_OFFSET
+	and	r0, r0, #AT91_MEMCTRL_SAMA5D4_MASK
+	str	r0, .sama5d4_bit
 
 	/* Drain write buffer */
 	mov	tmp1, #0
 	mcr	p15, 0, tmp1, c7, c10, 4
 
-	and	ddrcid, memctrl, #AT91_MEMCTRL_ID_MASK
-	lsr	ddrcid, #AT91_MEMCTRL_ID_SHIFT
-	and	memctrl, memctrl, #AT91_MEMCTRL_MASK
+	/* Active the self-refresh mode */
+	mov	r0, #SRAMC_SELF_REFRESH_ACTIVE
+	bl	at91_sramc_self_refresh
 
-	cmp	memctrl, #AT91_MEMCTRL_MC
-	bne	ddr_sr_enable
+	/* If the cpu isn't sama5d4, disable the ddr clock here */
+	ldr	r0, .sama5d4_bit
+	tst	r0, #AT91_MEMCTRL_SAMA5D4_BIT
+	bne	skip_ddr_clock
 
-	/*
-	 * at91rm9200 Memory controller
-	 */
-	/* Put SDRAM in self-refresh mode */
-	mov	tmp1, #1
-	str	tmp1, [sdramc, #AT91RM9200_SDRAMC_SRR]
-	b	sdr_sr_done
+	/* Disable DDR clock */
+	mov	r0, #DDR_CLOCK_DISABLE
+	bl	at91_ddr_clock
+skip_ddr_clock:
 
-	/*
-	 * DDRSDR Memory controller
-	 */
-ddr_sr_enable:
-	cmp	memctrl, #AT91_MEMCTRL_DDRSDR
-	bne	sdr_sr_enable
-
-	/* LPDDR1 --> force DDR2 mode during self-refresh */
-	ldr	tmp1, [sdramc, #AT91_DDRSDRC_MDR]
-	str	tmp1, .saved_sam9_mdr
-	bic	tmp1, tmp1, #~AT91_DDRSDRC_MD
-	cmp	tmp1, #AT91_DDRSDRC_MD_LOW_POWER_DDR
-	ldreq	tmp1, [sdramc, #AT91_DDRSDRC_MDR]
-	biceq	tmp1, tmp1, #AT91_DDRSDRC_MD
-	orreq	tmp1, tmp1, #AT91_DDRSDRC_MD_DDR2
-	streq	tmp1, [sdramc, #AT91_DDRSDRC_MDR]
-
-	/* prepare for DDRAM self-refresh mode */
-	ldr	tmp1, [sdramc, #AT91_DDRSDRC_LPR]
-	str	tmp1, .saved_sam9_lpr
-	bic	tmp1, #AT91_DDRSDRC_LPCB
-	orr	tmp1, #AT91_DDRSDRC_LPCB_SELF_REFRESH
-
-	/* figure out if we use the second ram controller */
-	cmp	ramc1, #0
-	beq	ddr_no_2nd_ctrl
-
-	ldr	tmp2, [ramc1, #AT91_DDRSDRC_MDR]
-	str	tmp2, .saved_sam9_mdr1
-	bic	tmp2, tmp2, #~AT91_DDRSDRC_MD
-	cmp	tmp2, #AT91_DDRSDRC_MD_LOW_POWER_DDR
-	ldreq	tmp2, [ramc1, #AT91_DDRSDRC_MDR]
-	biceq	tmp2, tmp2, #AT91_DDRSDRC_MD
-	orreq	tmp2, tmp2, #AT91_DDRSDRC_MD_DDR2
-	streq	tmp2, [ramc1, #AT91_DDRSDRC_MDR]
-
-	ldr	tmp2, [ramc1, #AT91_DDRSDRC_LPR]
-	str	tmp2, .saved_sam9_lpr1
-	bic	tmp2, #AT91_DDRSDRC_LPCB
-	orr	tmp2, #AT91_DDRSDRC_LPCB_SELF_REFRESH
-
-	/* Enable DDRAM self-refresh mode */
-	str	tmp2, [ramc1, #AT91_DDRSDRC_LPR]
-ddr_no_2nd_ctrl:
-	str	tmp1, [sdramc, #AT91_DDRSDRC_LPR]
-
-	b	sdr_sr_done
-
-	/*
-	 * SDRAMC Memory controller
-	 */
-sdr_sr_enable:
-	/* Enable SDRAM self-refresh mode */
-	ldr	tmp1, [sdramc, #AT91_SDRAMC_LPR]
-	str	tmp1, .saved_sam9_lpr
-
-	bic	tmp1, #AT91_SDRAMC_LPCB
-	orr	tmp1, #AT91_SDRAMC_LPCB_SELF_REFRESH
-	str	tmp1, [sdramc, #AT91_SDRAMC_LPR]
-
-sdr_sr_done:
-	/* Disable MPDDRC Clock*/
-	cmp	ddrcid, #0
-	beq	2f
-	bic	tmp2, ddrcid, #0xe0 /* fetch lowest 5 bits */
-	mov	tmp1, #0x01
-	mov	tmp1, tmp1, lsl tmp2
-
-	tst	ddrcid, #0x20	/* > 32 ? */
-	beq	1f
-	str	tmp1, [pmc, #AT91_PMC_PCDR1]
-	b	2f
-1:
-	str	tmp1, [pmc, #AT91_PMC_PCDR]
-2:
-
-	/* Disable DDR Clock */
-	mov 	tmp1, #AT91_PMC_SYS_DDR
-	str	tmp1, [pmc, #AT91_PMC_SCDR]
+	/* Load the the PMC base address */
+	ldr	pmc, .pmc_base
 
 	/* Save Master clock setting */
 	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
@@ -243,6 +180,19 @@ sdr_sr_done:
 	bic	tmp1, tmp1, #AT91_PMC_MOSCEN
 	orr	tmp1, tmp1, #AT91_PMC_KEY
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
+
+	/* If the cpu is the sama5d4, disable the ddr clock here */
+	ldr	r0, .sama5d4_bit
+	tst	r0, #AT91_MEMCTRL_SAMA5D4_BIT
+	beq	skip_postpone_ddr_clock
+
+	/* Disable DDR clock */
+	mov	r0, #DDR_CLOCK_DISABLE
+	bl	at91_ddr_clock
+skip_postpone_ddr_clock:
+
+	/* Load the the PMC base address */
+	ldr	pmc, .pmc_base
 
 	/* Wait for interrupt */
 	_do_wfi
@@ -291,82 +241,211 @@ sdr_sr_done:
 
 	wait_mckrdy
 
-	/* Enable MPDDRC Clock*/
-	cmp	ddrcid, #0
-	beq	4f
-	bic	tmp2, ddrcid, #0xe0 /* fetch lowest 5 bits */
-	mov	tmp1, #0x01
-	mov	tmp1, tmp1, lsl tmp2
+	/* Enable DDR clock*/
+	mov	r0, #DDR_CLOCK_ENABLE
+	bl	at91_ddr_clock
 
-	tst	ddrcid, #0x20	/* > 32 ? */
-	beq	3f
-	str	tmp1, [pmc, #AT91_PMC_PCER1]
-	b	4f
-3:
-	str	tmp1, [pmc, #AT91_PMC_PCER]
-4:
+	/* Exit the self-refresh mode */
+	mov	r0, #SRAMC_SELF_REFRESH_EXIT
+	bl	at91_sramc_self_refresh
 
-	/* Enable DDR clock */
-	mov 	tmp1, #AT91_PMC_SYS_DDR
-	str	tmp1, [pmc, #AT91_PMC_SCER]
+	/* Restore registers, and return */
+	ldmfd	sp!, {r4 - r12, pc}
+ENDPROC(at91_slow_clock)
+
+/*
+ * void at91_sramc_self_refresh(unsigned int is_active)
+ *
+ * @input param:
+ *	@r0: 1 - active self-refresh mode
+ *	     0 - exit self-refresh mode
+ * register usage:
+ * 	@r1: memory type
+ *	@r2: base address of the sram controller
+ */
+
+ENTRY(at91_sramc_self_refresh)
+	ldr	r1, .memtype
+	ldr	r2, .sramc_base
+
+	cmp	r1, #AT91_MEMCTRL_MC
+	bne	ddrc_sf
 
 	/*
 	 * at91rm9200 Memory controller
-	 * Do nothing - self-refresh is automatically disabled.
 	 */
-	cmp	memctrl, #AT91_MEMCTRL_MC
-	beq	ram_restored
+
+	 /*
+	  * For exiting the self_refresh mode, do nothing,
+	  * automatically exit self-refresh mode
+	  */
+	tst	r0, #SRAMC_SELF_REFRESH_ACTIVE
+	beq	exit_sramc_sf
+
+	/* Active SDRAM self-refresh mode */
+	mov	r3, #1
+	str	r3, [r2, #AT91RM9200_SDRAMC_SRR]
+	b	exit_sramc_sf
+
+ddrc_sf:
+	cmp	r1, #AT91_MEMCTRL_DDRSDR
+	bne	sdramc_sf
 
 	/*
-	 * DDRSDR Memory controller
+	 * DDR Memory controller
 	 */
-	cmp	memctrl, #AT91_MEMCTRL_DDRSDR
-	bne	sdr_en_restore
+	tst	r0, #SRAMC_SELF_REFRESH_ACTIVE
+	beq	ddrc_exit_sf
 
+	/* LPDDR1 --> force DDR2 mode during self-refresh */
+	ldr	r3, [r2, #AT91_DDRSDRC_MDR]
+	str	r3, .saved_sam9_mdr
+	bic	r3, r3, #~AT91_DDRSDRC_MD
+	cmp	r3, #AT91_DDRSDRC_MD_LOW_POWER_DDR
+	ldreq	r3, [r2, #AT91_DDRSDRC_MDR]
+	biceq	r3, r3, #AT91_DDRSDRC_MD
+	orreq	r3, r3, #AT91_DDRSDRC_MD_DDR2
+	streq	r3, [r2, #AT91_DDRSDRC_MDR]
+
+	/* Active DDRC self-refresh mode */
+	ldr	r3, [r2, #AT91_DDRSDRC_LPR]
+	str	r3, .saved_sam9_lpr
+	bic	r3, r3, #AT91_DDRSDRC_LPCB
+	orr	r3, r3, #AT91_DDRSDRC_LPCB_SELF_REFRESH
+	str	r3, [r2, #AT91_DDRSDRC_LPR]
+
+	/* If using the 2nd ddr controller */
+	ldr	r2, .sramc1_base
+	cmp	r2, #0
+	beq	no_2nd_ddrc
+
+	ldr	r3, [r2, #AT91_DDRSDRC_MDR]
+	str	r3, .saved_sam9_mdr1
+	bic	r3, r3, #~AT91_DDRSDRC_MD
+	cmp	r3, #AT91_DDRSDRC_MD_LOW_POWER_DDR
+	ldreq	r3, [r2, #AT91_DDRSDRC_MDR]
+	biceq	r3, r3, #AT91_DDRSDRC_MD
+	orreq	r3, r3, #AT91_DDRSDRC_MD_DDR2
+	streq	r3, [r2, #AT91_DDRSDRC_MDR]
+
+	ldr	r3, [r2, #AT91_DDRSDRC_LPR]
+	str	r3, .saved_sam9_lpr1
+	bic	r3, r3, #AT91_DDRSDRC_LPCB
+	orr	r3, r3, #AT91_DDRSDRC_LPCB_SELF_REFRESH
+
+	/* Active DDRC self-refresh mode */
+	str	r3, [r2, #AT91_DDRSDRC_LPR]
+no_2nd_ddrc:
+	b	exit_sramc_sf
+
+ddrc_exit_sf:
 	/* Restore MDR in case of LPDDR1 */
-	ldr	tmp1, .saved_sam9_mdr
-	str	tmp1, [sdramc, #AT91_DDRSDRC_MDR]
+	ldr	r3, .saved_sam9_mdr
+	str	r3, [r2, #AT91_DDRSDRC_MDR]
 	/* Restore LPR on AT91 with DDRAM */
-	ldr	tmp1, .saved_sam9_lpr
-	str	tmp1, [sdramc, #AT91_DDRSDRC_LPR]
+	ldr	r3, .saved_sam9_lpr
+	str	r3, [r2, #AT91_DDRSDRC_LPR]
 
-	/* if we use the second ram controller */
-	cmp	ramc1, #0
-	ldrne	tmp2, .saved_sam9_mdr1
-	strne	tmp2, [ramc1, #AT91_DDRSDRC_MDR]
-	ldrne	tmp2, .saved_sam9_lpr1
-	strne	tmp2, [ramc1, #AT91_DDRSDRC_LPR]
+	/* If using the 2nd ddr controller */
+	ldr	r2, .sramc1_base
+	cmp	r2, #0
+	ldrne	r3, .saved_sam9_mdr1
+	strne	r3, [r2, #AT91_DDRSDRC_MDR]
+	ldrne	r3, .saved_sam9_lpr1
+	strne	r3, [r2, #AT91_DDRSDRC_LPR]
 
-	b	ram_restored
+	b	exit_sramc_sf
 
 	/*
 	 * SDRAMC Memory controller
 	 */
-sdr_en_restore:
-	/* Restore LPR on AT91 with SDRAM */
-	ldr	tmp1, .saved_sam9_lpr
-	str	tmp1, [sdramc, #AT91_SDRAMC_LPR]
+sdramc_sf:
+	tst	r0, #SRAMC_SELF_REFRESH_ACTIVE
+	beq	sdramc_exit_sf
 
-ram_restored:
-	/* Restore registers, and return */
-	ldmfd	sp!, {r4 - r12, pc}
+	/* Active SDRAMC self-refresh mode */
+	ldr	r3, [r2, #AT91_SDRAMC_LPR]
+	str	r3, .saved_sam9_lpr
 
+	bic	r3, r3, #AT91_SDRAMC_LPCB
+	orr	r3, r3, #AT91_SDRAMC_LPCB_SELF_REFRESH
+	str	r3, [r2, #AT91_SDRAMC_LPR]
 
+sdramc_exit_sf:
+	ldr	r3, .saved_sam9_lpr
+	str	r3, [r2, #AT91_SDRAMC_LPR]
+
+exit_sramc_sf:
+	mov	pc, lr
+ENDPROC(at91_sramc_self_refresh)
+
+/*
+ * void at91_ddr_clock(unsigned char is_enable)
+ *
+ * @input param:
+ *	@r0: 0x01 - enable DDR clock
+ *	     0x00 - disable DDR clock
+ * register usage:
+ * 	@r1: ddrc peripheral id
+ *	@r2: base address of the pmc
+ */
+ENTRY(at91_ddr_clock)
+	ldr	r1, .ddrc_pid
+	ldr	r2, .pmc_base
+
+	/* DDRC peripheral clock */
+	cmp	r1, #0
+	beq	ddr_sys_clk
+
+	and	r1, r1, #AT91_PMC_PCR_PID
+	orr	r1, r1, #AT91_PMC_PCR_CMD
+
+	tst	r0, #DDR_CLOCK_ENABLE
+	beq	ddrc_clk
+	orr	r1, r1, #AT91_PMC_PCR_EN
+
+ddrc_clk:
+	str	r1, [r2, #AT91_PMC_PCR]
+
+ddr_sys_clk:
+	/* DDR system clock */
+	mov 	r3, #AT91_PMC_SYS_DDR
+
+	tst	r0, #DDR_CLOCK_ENABLE
+	beq	disable_sys_clk
+
+	str	r3, [r2, #AT91_PMC_SCER]
+	b	exit_ddr_clock
+
+disable_sys_clk:
+	str	r3, [r2, #AT91_PMC_SCDR]
+
+exit_ddr_clock:
+	mov	pc, lr
+ENDPROC(at91_ddr_clock)
+
+.pmc_base:
+	.word 0
+.sramc_base:
+	.word 0
+.sramc1_base:
+	.word 0
+.memtype:
+	.word 0
+.ddrc_pid:
+	.word 0
+.sama5d4_bit:
+	.word 0
 .saved_mckr:
 	.word 0
-
 .saved_pllar:
 	.word 0
-
 .saved_sam9_lpr:
 	.word 0
-
 .saved_sam9_lpr1:
 	.word 0
-
 .saved_sam9_mdr:
 	.word 0
-
 .saved_sam9_mdr1:
 	.word 0
 
