@@ -871,7 +871,7 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 	unsigned long		flags;
 	enum dma_status		ret;
 	int			residue;
-	u32			cur_nda;
+	u32			cur_nda, mask, value;
 
 	ret = dma_cookie_status(chan, cookie, txstate);
 	if (ret == DMA_SUCCESS)
@@ -896,10 +896,17 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 
 	residue = desc->xfer_size;
 
-	/* Flush FIFO. */
-	at_xdmac_write(atxdmac, AT_XDMAC_GSWF, atchan->mask);
-	while (!(at_xdmac_chan_read(atchan, AT_XDMAC_CIS) & AT_XDMAC_CIS_FIS));
-		cpu_relax();
+	/*
+	 * Flush FIFO: only relevant when the transfer is source peripheral
+	 * synchronized.
+	 */
+	mask = AT_XDMAC_CC_TYPE | AT_XDMAC_CC_DSYNC;
+	value = AT_XDMAC_CC_TYPE_PER_TRAN | AT_XDMAC_CC_DSYNC_PER2MEM;
+	if ((desc->lld.mbr_cfg & mask) == value) {
+		at_xdmac_write(atxdmac, AT_XDMAC_GSWF, atchan->mask);
+		while (!(at_xdmac_chan_read(atchan, AT_XDMAC_CIS) & AT_XDMAC_CIS_FIS))
+			cpu_relax();
+	}
 
 	cur_nda = at_xdmac_chan_read(atchan, AT_XDMAC_CNDA) & 0xfffffffc;
 	/*
