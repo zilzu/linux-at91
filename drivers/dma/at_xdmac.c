@@ -867,6 +867,7 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 	struct at_xdmac_chan	*atchan = to_at_xdmac_chan(chan);
 	struct at_xdmac		*atxdmac = to_at_xdmac(atchan->chan.device);
 	struct at_xdmac_desc	*desc, *_desc;
+	struct list_head	*descs_list;
 	unsigned long		flags;
 	enum dma_status		ret;
 	int			residue;
@@ -906,7 +907,8 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 	 * one. Then add the remaining size to transfer of the current
 	 * microblock.
 	 */
-	list_for_each_entry_safe(desc, _desc, &desc->descs_list, desc_node) {
+	descs_list = &desc->descs_list;
+	list_for_each_entry_safe(desc, _desc, descs_list, desc_node) {
 		residue -= (desc->lld.mbr_ubc & 0xffffff) << atchan->dwidth;
 		if ((desc->lld.mbr_nda & 0xfffffffc) == cur_nda)
 			break;
