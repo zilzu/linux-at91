@@ -823,7 +823,7 @@ at_xdmac_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
 		desc->lld.mbr_ubc = AT_XDMAC_MBR_UBC_NDV2
 			| AT_XDMAC_MBR_UBC_NDEN
 			| AT_XDMAC_MBR_UBC_NSEN
-			| (remaining_size ? 0 : AT_XDMAC_MBR_UBC_NDE)
+			| (remaining_size ? AT_XDMAC_MBR_UBC_NDE : 0)
 			| ublen;
 		desc->lld.mbr_cfg = chan_cc;
 
