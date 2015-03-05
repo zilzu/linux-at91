@@ -349,15 +349,20 @@ static void at_xdmac_start_xfer(struct at_xdmac_chan *atchan,
 	at_xdmac_chan_write(atchan, AT_XDMAC_CNDA, reg);
 
 	/*
-	 * When doing memory to memory transfer we need to use the next
+	 * When doing non cyclic transfer we need to use the next
 	 * descriptor view 2 since some fields of the configuration register
 	 * depend on transfer size and src/dest addresses.
 	 */
-	if (atchan->cfg & AT_XDMAC_CC_TYPE_PER_TRAN) {
+	if (at_xdmac_chan_is_cyclic(atchan)) {
 		reg = AT_XDMAC_CNDC_NDVIEW_NDV1;
 		at_xdmac_chan_write(atchan, AT_XDMAC_CC, atchan->cfg);
-	} else
+	} else {
+		/*
+		 * No need to write AT_XDMAC_CC reg, it will be done when the
+		 * descriptor is fecthed.
+		 */
 		reg = AT_XDMAC_CNDC_NDVIEW_NDV2;
+	}
 
 	reg |= AT_XDMAC_CNDC_NDDUP
 	       | AT_XDMAC_CNDC_NDSUP
@@ -596,7 +601,8 @@ at_xdmac_prep_slave_sg(struct dma_chan *chan, struct scatterlist *sgl,
 			desc->lld.mbr_sa = mem;
 			desc->lld.mbr_da = sconfig->dst_addr;
 		}
-		desc->lld.mbr_ubc = AT_XDMAC_MBR_UBC_NDV1		/* next descriptor view */
+		desc->lld.mbr_cfg = atchan->cfg;
+		desc->lld.mbr_ubc = AT_XDMAC_MBR_UBC_NDV2		/* next descriptor view */
 			| AT_XDMAC_MBR_UBC_NDEN				/* next descriptor dst parameter update */
 			| AT_XDMAC_MBR_UBC_NSEN				/* next descriptor src parameter update */
 			| (i == sg_len - 1 ? 0 : AT_XDMAC_MBR_UBC_NDE)	/* descriptor fetch */
