@@ -373,14 +373,18 @@ static void at_xdmac_start_xfer(struct at_xdmac_chan *atchan,
 		 at_xdmac_chan_read(atchan, AT_XDMAC_CDA),
 		 at_xdmac_chan_read(atchan, AT_XDMAC_CUBC));
 
+	at_xdmac_chan_write(atchan, AT_XDMAC_CID, 0xffffffff);
+	reg = AT_XDMAC_CIE_RBEIE | AT_XDMAC_CIE_WBEIE | AT_XDMAC_CIE_ROIE;
 	/*
 	 * There is no end of list when doing cyclic dma, we need to get
 	 * an interrupt after each periods.
 	 */
 	if (at_xdmac_chan_is_cyclic(atchan))
-		at_xdmac_chan_write(atchan, AT_XDMAC_CIE, AT_XDMAC_CIE_BIE);
+		at_xdmac_chan_write(atchan, AT_XDMAC_CIE,
+				    reg | AT_XDMAC_CIE_BIE);
 	else
-		at_xdmac_chan_write(atchan, AT_XDMAC_CIE, AT_XDMAC_CIE_LIE);
+		at_xdmac_chan_write(atchan, AT_XDMAC_CIE,
+				    reg | AT_XDMAC_CIE_LIE);
 	at_xdmac_write(atxdmac, AT_XDMAC_GIE, atchan->mask);
 	dev_vdbg(chan2dev(&atchan->chan),
 		 "%s: enable channel (0x%08x)\n", __func__, atchan->mask);
