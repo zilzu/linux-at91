@@ -17,6 +17,8 @@
 #include <mach/at91_pmc.h>
 #include <mach/at91_ramc.h>
 
+	.arm
+
 #ifdef CONFIG_SOC_AT91SAM9263
 /*
  * FIXME either or both the SDRAM controllers (EB0, EB1) might be in use;

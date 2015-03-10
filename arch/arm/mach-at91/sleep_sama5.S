@@ -9,6 +9,7 @@
 #include <mach/at91_pmc.h>
 #include <mach/at91sam9_ddrsdr.h>
 
+	.arm
 /*
  * void at91_cortexa5_standby(void)
  *
