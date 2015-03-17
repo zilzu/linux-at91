@@ -346,7 +346,7 @@ static struct clk_lookup periph_clocks_lookups[] = {
 	CLKDEV_CON_DEV_ID("hclk", "f802c000.ethernet", &macb1_clk),
 	CLKDEV_CON_DEV_ID("pclk", "f802c000.ethernet", &macb1_clk),
 	CLKDEV_CON_DEV_ID("pclk", "f0008000.ssc", &ssc0_clk),
-	CLKDEV_CON_DEV_ID("pclk", "f000c000.ssc", &ssc1_clk),
+	CLKDEV_CON_DEV_ID("pclk", "f800c000.ssc", &ssc1_clk),
 	CLKDEV_CON_DEV_ID("can_clk", "f000c000.can", &can0_clk),
 	CLKDEV_CON_DEV_ID("can_clk", "f8010000.can", &can1_clk),
 	CLKDEV_CON_DEV_ID("sha_clk", "f8034000.sha", &sha_clk),
