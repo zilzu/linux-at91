@@ -70,6 +70,8 @@ dtb-$(CONFIG_ARCH_AT91)	+= sama5d36ek_revc_pda7.dtb
 dtb-$(CONFIG_ARCH_AT91)	+= at91-sama5d4_xplained.dtb
 dtb-$(CONFIG_ARCH_AT91)	+= at91-sama5d4_xplained_pda4.dtb
 dtb-$(CONFIG_ARCH_AT91)	+= at91-sama5d4_xplained_hdmi.dtb
+dtb-$(CONFIG_ARCH_AT91)	+= at91-sama5d4ek.dtb
+dtb-$(CONFIG_ARCH_AT91)	+= at91-sama5d4ek_hdmi.dtb
 dtb-$(CONFIG_ARCH_AT91)	+= sama5d4ek.dtb
 dtb-$(CONFIG_ARCH_AT91)	+= sama5d4ek_hdmi.dtb
 
@@ -246,6 +248,15 @@ dtb-$(CONFIG_ARCH_ZYNQ) += zynq-zc702.dtb
 
 targets += dtbs
 targets += $(dtb-y)
+
+$(obj)/at91-sama5d4ek.dtb: $(obj)/sama5d4ek.dtb
+$(obj)/at91-sama5d4ek_hdmi.dtb: $(obj)/sama5d4ek_hdmi.dtb
+
+$(obj)/at91-sama5d4ek.dtb: $(obj)/sama5d4ek.dtb
+	$(Q)ln -fs sama5d4ek.dtb $@
+
+$(obj)/at91-sama5d4ek_hdmi.dtb: $(obj)/sama5d4ek_hdmi.dtb
+	$(Q)ln -fs sama5d4ek_hdmi.dtb $@
 endif
 
 # *.dtb used to be generated in the directory above. Clean out the
