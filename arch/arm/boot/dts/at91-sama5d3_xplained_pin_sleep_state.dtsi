@@ -49,10 +49,6 @@
 				pinctrl-1 = <&pinctrl_macb1_rmii_sleep>;
 			};
 
-			pwm0: pwm@f002c000 {
-				status = "disabled";
-			};
-
 			usart0: serial@f001c000 {
 				pinctrl-names = "default", "sleep";
 				pinctrl-1 = <&pinctrl_usart0_sleep>;
@@ -93,13 +89,11 @@
 					&pinctrl_adc0_ad8_sleep
 					&pinctrl_adc0_ad9_sleep
 					>;
-				status = "disabled";
 			};
 
 			i2c2: i2c@f801c000 {
 				pinctrl-names = "default", "sleep";
 				pinctrl-1 = <&pinctrl_i2c2_sleep>;
-				status = "disabled";
 			};
 
 			dbgu: serial@ffffee00 {
