@@ -957,6 +957,18 @@
 				clocks = <&twi1_clk>;
 				status = "disabled";
 			};
+
+			pio_reg: syscon@fc038000 {
+				compatible = "atmel,sama5d2-pio_reg", "syscon";
+				reg = <0xfc038000 0x600>;
+			};
+
+			pinctrl@fc038000 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "atmel,sama5d2-pinctrl", "simple-bus";
+				atmel,pio_reg = <&pio_reg 0x0>;
+			};
 		};
 	};
 };
