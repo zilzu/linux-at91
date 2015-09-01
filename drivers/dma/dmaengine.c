@@ -682,6 +682,10 @@ struct dma_chan *dma_request_slave_channel(struct device *dev,
 	struct dma_chan *ch = dma_request_slave_channel_reason(dev, name);
 	if (IS_ERR(ch))
 		return NULL;
+
+	dma_cap_set(DMA_PRIVATE, ch->device->cap_mask);
+	ch->device->privatecnt++;
+
 	return ch;
 }
 EXPORT_SYMBOL_GPL(dma_request_slave_channel);
@@ -836,6 +840,8 @@ int dma_async_device_register(struct dma_device *device)
 		!device->device_prep_dma_pq);
 	BUG_ON(dma_has_cap(DMA_PQ_VAL, device->cap_mask) &&
 		!device->device_prep_dma_pq_val);
+	BUG_ON(dma_has_cap(DMA_MEMSET, device->cap_mask) &&
+		!device->device_prep_dma_memset);
 	BUG_ON(dma_has_cap(DMA_INTERRUPT, device->cap_mask) &&
 		!device->device_prep_dma_interrupt);
 	BUG_ON(dma_has_cap(DMA_SG, device->cap_mask) &&
