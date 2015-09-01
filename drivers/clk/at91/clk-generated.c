@@ -95,13 +95,17 @@ clk_generated_recalc_rate(struct clk_hw *hw,
 	return DIV_ROUND_CLOSEST(parent_rate, gck->gckdiv + 1);
 }
 
-static int clk_generated_determine_rate(struct clk_hw *hw,
-					struct clk_rate_request *req)
+static long clk_generated_determine_rate(struct clk_hw *hw,
+					 unsigned long rate,
+					 unsigned long min_rate,
+					 unsigned long max_rate,
+					 unsigned long *best_parent_rate,
+					 struct clk_hw **best_parent_hw)
 {
 	struct clk_generated *gck = to_clk_generated(hw);
 	struct clk *parent = NULL;
 	long best_rate = -EINVAL;
-	unsigned long tmp_rate, min_rate;
+	unsigned long tmp_rate, minimum_rate;
 	int best_diff = -1;
 	int tmp_diff;
 	int i;
@@ -115,23 +119,24 @@ static int clk_generated_determine_rate(struct clk_hw *hw,
 			continue;
 
 		parent_rate = __clk_get_rate(parent);
-		min_rate = DIV_ROUND_CLOSEST(parent_rate, GENERATED_MAX_DIV + 1);
+		minimum_rate = DIV_ROUND_CLOSEST(parent_rate, GENERATED_MAX_DIV + 1);
 		if (!parent_rate ||
-		    (gck->range.max && min_rate > gck->range.max))
+		    (gck->range.max && minimum_rate > gck->range.max))
 			continue;
 
 		for (div = 1; div < GENERATED_MAX_DIV + 2; div++) {
+
 			tmp_rate = DIV_ROUND_CLOSEST(parent_rate, div);
-			tmp_diff = abs(req->rate - tmp_rate);
+			tmp_diff = abs(rate - tmp_rate);
 
 			if (best_diff < 0 || best_diff > tmp_diff) {
 				best_rate = tmp_rate;
 				best_diff = tmp_diff;
-				req->best_parent_rate = parent_rate;
-				req->best_parent_hw = __clk_get_hw(parent);
+				*best_parent_rate = parent_rate;
+				*best_parent_hw = __clk_get_hw(parent);
 			}
 
-			if (!best_diff || tmp_rate < req->rate)
+			if (!best_diff || tmp_rate < rate)
 				break;
 		}
 
@@ -139,16 +144,11 @@ static int clk_generated_determine_rate(struct clk_hw *hw,
 			break;
 	}
 
-	pr_debug("GCLK: %s, best_rate = %ld, parent clk: %s @ %ld\n",
-		 __func__, best_rate,
-		 __clk_get_name((req->best_parent_hw)->clk),
-		 req->best_parent_rate);
+	pr_debug("GCLK: %s, best_rate = %ld, parent clk: %s @ %ld\n" ,
+		 __FUNCTION__ , best_rate,
+		 __clk_get_name((*best_parent_hw)->clk), *best_parent_rate);
 
-	if (best_rate < 0)
-		return best_rate;
-
-	req->rate = best_rate;
-	return 0;
+	return best_rate;
 }
 
 /* No modification of hardware as we have the flag CLK_SET_PARENT_GATE set */
@@ -264,6 +264,7 @@ at91_clk_register_generated(struct at91_pmc *pmc, const char *name,
 void __init of_sama5d2_clk_generated_setup(struct device_node *np,
 					   struct at91_pmc *pmc)
 {
+	int i;
 	int num;
 	u32 id;
 	const char *name;
@@ -273,11 +274,15 @@ void __init of_sama5d2_clk_generated_setup(struct device_node *np,
 	struct device_node *gcknp;
 	struct clk_range range = CLK_RANGE(0, 0);
 
-	num_parents = of_clk_get_parent_count(np);
+	num_parents = of_count_phandle_with_args(np, "clocks", "#clock-cells");
 	if (num_parents <= 0 || num_parents > GENERATED_SOURCE_MAX)
 		return;
 
-	of_clk_parent_fill(np, parent_names, num_parents);
+	for (i = 0; i < num_parents; ++i) {
+		parent_names[i] = of_clk_get_parent_name(np, i);
+		if (!parent_names[i])
+			return;
+	}
 
 	num = of_get_child_count(np);
 	if (!num || num > PERIPHERAL_MAX)
