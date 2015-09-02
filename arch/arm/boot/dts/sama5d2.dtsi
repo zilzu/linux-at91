@@ -263,6 +263,24 @@
 			cache-level = <2>;
 		};
 
+		sdmmc0: sdio-host@a0000000 {
+			compatible = "atmel,sama5d2-sdhci";
+			reg = <0xa0000000 0x300>;
+			interrupts = <31 IRQ_TYPE_LEVEL_HIGH 0>;
+			clocks = <&sdmmc0_hclk>, <&sdmmc0_gclk>, <&main>;
+			clock-names = "hclock", "multclk", "baseclk";
+			status = "disabled";
+		};
+
+		sdmmc1: sdio-host@b0000000 {
+			compatible = "atmel,sama5d2-sdhci";
+			reg = <0xb0000000 0x300>;
+			interrupts = <32 IRQ_TYPE_LEVEL_HIGH 0>;
+			clocks = <&sdmmc1_hclk>, <&sdmmc1_gclk>, <&main>;
+			clock-names = "hclock", "multclk", "baseclk";
+			status = "disabled";
+		};
+
 		apb {
 			compatible = "simple-bus";
 			#address-cells = <1>;
@@ -695,6 +713,42 @@
 					qspi1_clk: qspi1_clk {
 						#clock-cells = <0>;
 						reg = <53>;
+					};
+				};
+
+				gck {
+					compatible = "atmel,sama5d2-clk-generated";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					interrupt-parent = <&pmc>;
+					clocks = <&clk32k>, <&main>, <&plladiv>, <&utmi>, <&mck>;
+
+					sdmmc0_gclk: sdmmc0_gclk {
+						#clock-cells = <0>;
+						reg = <31>;
+					};
+
+					sdmmc1_gclk: sdmmc1_gclk {
+						#clock-cells = <0>;
+						reg = <32>;
+					};
+
+					tcb0_gclk: tcb0_gclk {
+						#clock-cells = <0>;
+						reg = <35>;
+						atmel,clk-output-range = <0 83000000>;
+					};
+
+					tcb1_gclk: tcb1_gclk {
+						#clock-cells = <0>;
+						reg = <36>;
+						atmel,clk-output-range = <0 83000000>;
+					};
+
+					pwm_gclk: pwm_gclk {
+						#clock-cells = <0>;
+						reg = <38>;
+						atmel,clk-output-range = <0 83000000>;
 					};
 				};
 			};
