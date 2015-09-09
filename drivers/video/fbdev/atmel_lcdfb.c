@@ -999,7 +999,7 @@ static const char *atmel_lcdfb_wiring_modes[] = {
 	[ATMEL_LCDC_WIRING_RGB]	= "RGB",
 };
 
-const int atmel_lcdfb_get_of_wiring_modes(struct device_node *np)
+static int atmel_lcdfb_get_of_wiring_modes(struct device_node *np)
 {
 	const char *mode;
 	int err, i;
@@ -1266,7 +1266,8 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 			goto stop_clk;
 		}
 
-		info->screen_base = ioremap(info->fix.smem_start, info->fix.smem_len);
+		info->screen_base = ioremap_wc(info->fix.smem_start,
+					       info->fix.smem_len);
 		if (!info->screen_base) {
 			ret = -ENOMEM;
 			goto release_intmem;
