@@ -45,6 +45,7 @@
 /dts-v1/;
 #include "sama5d2.dtsi"
 #include "sama5d2-pinfunc.h"
+#include <dt-bindings/mfd/atmel-flexcom.h>
 
 / {
 	model = "Atmel SAMA5D2 Xplained";
@@ -135,6 +136,23 @@
 				status = "okay";
 			};
 
+			flx0: flexcom@f8034000 {
+				atmel,flexcom-mode = <ATMEL_FLEXCOM_MODE_USART>;
+				status = "disabled";	/* conflict with ISC_D2 & ISC_D3 data pins */
+
+				uart5: serial@200 {
+					compatible = "atmel,at91sam9260-usart";
+					reg = <0x200 0x200>;
+					interrupts = <19 IRQ_TYPE_LEVEL_HIGH 7>;
+					clocks = <&flx0_clk>;
+					clock-names = "usart";
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_flx0_default>;
+					atmel,fifo-size = <32>;
+					status = "okay";
+				};
+			};
+
 			shdwc@f8048010 {
 				atmel,shdwc-debouncer = <976>;
 
@@ -148,6 +166,26 @@
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_uart3_default>;
 				status = "okay";
+			};
+
+			flx4: flexcom@fc018000 {
+				atmel,flexcom-mode = <ATMEL_FLEXCOM_MODE_TWI>;
+				status = "okay";
+
+				i2c2: i2c@600 {
+					compatible = "atmel,sama5d2-i2c";
+					reg = <0x600 0x200>;
+					interrupts = <23 IRQ_TYPE_LEVEL_HIGH 7>;
+					dmas = <0>, <0>;
+					dma-names = "tx", "rx";
+					#address-cells = <1>;
+					#size-cells = <0>;
+					clocks = <&flx4_clk>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_flx4_default>;
+					atmel,fifo-size = <16>;
+					status = "okay";
+				};
 			};
 
 			i2c1: i2c@fc028000 {
@@ -165,6 +203,16 @@
 
 			pinctrl@fc038000 {
 				group_defs {
+					flx0_0 {
+						pins = <PIN_PB28__FLEXCOM0_IO0>,
+						       <PIN_PB29__FLEXCOM0_IO1>;
+					};
+
+					flx4_0 {
+						pins = <PIN_PD12__FLEXCOM4_IO0>,
+						       <PIN_PD13__FLEXCOM4_IO1>;
+					};
+
 					i2c0_0 {
 						pins = <PIN_PD21__TWD0>,
 						       <PIN_PD22__TWCK0>;
@@ -209,6 +257,32 @@
 					uart3_0 {
 						pins = <PIN_PB11__URXD3>,
 						       <PIN_PB12__UTXD3>;
+					};
+				};
+
+				pinctrl_flx0_default: flx0_default {
+					mux {
+						function = "C";
+						groups = "flx0_0";
+					};
+
+					conf {
+						pin = <PIN_PB28__FLEXCOM0_IO0>,
+						      <PIN_PB29__FLEXCOM0_IO1>;
+						bias-disable;
+					};
+				};
+
+				pinctrl_flx4_default: flx4_default {
+					mux {
+						function = "B";
+						groups = "flx4_0";
+					};
+
+					conf {
+						pins = <PIN_PD12__FLEXCOM4_IO0>,
+						       <PIN_PD13__FLEXCOM4_IO1>;
+						bias-disable;
 					};
 				};
 
