@@ -104,10 +104,23 @@
 			bus-width = <4>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_sdmmc1_default>;
-			status = "okay";
+			status = "okay"; /* conflict with qspi0 */
 		};
 
 		apb {
+			qspi0: qspi@f0020000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_qspi0_default>;
+				/*status = "okay";*/ /* conflict with sdmmc1 */
+
+				m25p80@0 {
+					compatible = "micron,n25q128a13";
+					reg = <0>;
+					spi-max-frequency = <83000000>;
+					m25p,num-dummy-cycles = <6>;
+				};
+			};
+
 			spi0: spi@f8000000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_spi0_default>;
@@ -225,6 +238,15 @@
 						       <PIN_PD5__TWCK1>;
 					};
 
+					qspi0_0 {
+						pins = <PIN_PA22__QSPI0_SCK>,
+						       <PIN_PA23__QSPI0_CS>,
+						       <PIN_PA24__QSPI0_IO0>,
+						       <PIN_PA25__QSPI0_IO1>,
+						       <PIN_PA26__QSPI0_IO2>,
+						       <PIN_PA27__QSPI0_IO3>;
+					};
+
 					sdmmc0_0 {
 						pins = <PIN_PA0__SDMMC0_CK>,
 						       <PIN_PA1__SDMMC0_CMD>,
@@ -318,6 +340,22 @@
 						pins = <PIN_PD4__TWD1>,
 						       <PIN_PD5__TWCK1>;
 						bias-disable;
+					};
+				};
+
+				pinctrl_qspi0_default: qspi0_default {
+					mux {
+						function = "F";
+						groups = "qspi0_0";
+					};
+
+					conf {
+						pins = <PIN_PA22__QSPI0_SCK>,
+						       <PIN_PA23__QSPI0_CS>,
+						       <PIN_PA24__QSPI0_IO0>,
+						       <PIN_PA25__QSPI0_IO1>,
+						       <PIN_PA26__QSPI0_IO2>,
+						       <PIN_PA27__QSPI0_IO3>;
 					};
 				};
 
