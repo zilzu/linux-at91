@@ -130,6 +130,8 @@
 
 			i2c0: i2c@f8028000 {
 				dmas = <0>, <0>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_i2c0_default>;
 				status = "okay";
 			};
 
@@ -150,6 +152,8 @@
 
 			i2c1: i2c@fc028000 {
 				dmas = <0>, <0>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_i2c1_default>;
 				status = "okay";
 
 				at24@54 {
@@ -161,6 +165,16 @@
 
 			pinctrl@fc038000 {
 				group_defs {
+					i2c0_0 {
+						pins = <PIN_PD21__TWD0>,
+						       <PIN_PD22__TWCK0>;
+					};
+
+					i2c1_0 {
+						pins = <PIN_PD4__TWD1>,
+						       <PIN_PD5__TWCK1>;
+					};
+
 					sdmmc0_0 {
 						pins = <PIN_PA0__SDMMC0_CK>,
 						       <PIN_PA1__SDMMC0_CMD>,
@@ -195,6 +209,32 @@
 					uart3_0 {
 						pins = <PIN_PB11__URXD3>,
 						       <PIN_PB12__UTXD3>;
+					};
+				};
+
+				pinctrl_i2c0_default: i2c0_default {
+					mux {
+						function = "B";
+						groups = "i2c0_0";
+					};
+
+					conf {
+						pins = <PIN_PD21__TWD0>,
+						       <PIN_PD22__TWCK0>;
+						bias-disable;
+					};
+				};
+
+				pinctrl_i2c1_default: i2c1_default {
+					mux {
+						function = "A";
+						groups = "i2c1_0";
+					};
+
+					conf {
+						pins = <PIN_PD4__TWD1>,
+						       <PIN_PD5__TWCK1>;
+						bias-disable;
 					};
 				};
 
