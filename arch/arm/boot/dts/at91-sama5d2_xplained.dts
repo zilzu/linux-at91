@@ -133,6 +133,15 @@
 				status = "okay";
 			};
 
+			shdwc@f8048010 {
+				atmel,shdwc-debouncer = <976>;
+
+				input@0 {
+					reg = <0>;
+					atmel,wakeup-type = "low";
+				};
+			};
+
 			uart3: serial@fc008000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_uart3_default>;
