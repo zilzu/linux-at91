@@ -1137,6 +1137,7 @@ void sdhci_set_clock(struct sdhci_host *host, unsigned int clock)
 	host->mmc->actual_clock = 0;
 
 	sdhci_writew(host, 1, SDHCI_CLOCK_CONTROL);
+	mdelay(1);
 
 	if (clock == 0)
 		return;
