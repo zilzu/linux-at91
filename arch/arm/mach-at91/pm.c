@@ -35,6 +35,11 @@
 #include "generic.h"
 #include "pm.h"
 
+#define ULP0_MODE	0x00
+#define ULP1_MODE	0x11
+
+#define SAMA5D2_PMC_VERSION	0x20540
+
 void __iomem *pmc;
 
 /*
@@ -49,6 +54,7 @@ extern void at91_pinctrl_gpio_resume(void);
 static struct {
 	unsigned long uhp_udp_mask;
 	int memctrl;
+	u32 ulp_mode;
 } at91_pm_data;
 
 void __iomem *at91_ramc_base[2];
@@ -138,8 +144,11 @@ static void at91_pm_suspend(suspend_state_t state)
 {
 	unsigned int pm_data = at91_pm_data.memctrl;
 
-	pm_data |= (state == PM_SUSPEND_MEM) ?
-				AT91_PM_MODE(AT91_PM_SLOW_CLOCK) : 0;
+	if (state == PM_SUSPEND_MEM) {
+		pm_data |= AT91_PM_MODE(AT91_PM_SLOW_CLOCK);
+		if (at91_pm_data.ulp_mode == ULP1_MODE)
+			pm_data |=  AT91_PM_ULP(AT91_PM_ULP1_MODE);
+	}
 
 	flush_cache_all();
 	outer_disable();
@@ -465,4 +474,7 @@ void __init at91sam9x5_pm_init(void)
 	at91_pm_data.uhp_udp_mask = AT91SAM926x_PMC_UHP | AT91SAM926x_PMC_UDP;
 	at91_pm_data.memctrl = AT91_MEMCTRL_DDRSDR;
 	at91_pm_init();
+
+	if (readl(pmc + AT91_PMC_VERSION) >= SAMA5D2_PMC_VERSION)
+		at91_pm_data.ulp_mode = ULP1_MODE;
 }
