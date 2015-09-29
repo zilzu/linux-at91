@@ -105,6 +105,9 @@ config HAVE_AT91_H32MX
 config HAVE_AT91_GENERATED_CLK
 	bool
 
+config HAVE_AT91_AUDIO_PLL
+	bool
+
 config SOC_SAM_V4_V5
 	bool
 
