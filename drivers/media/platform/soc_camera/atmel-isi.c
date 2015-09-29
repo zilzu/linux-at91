@@ -274,8 +274,19 @@ static irqreturn_t isi_interrupt(int irq, void *dev_id)
 	return ret;
 }
 
-#define	WAIT_ISI_RESET		1
-#define	WAIT_ISI_DISABLE	0
+#define	WAIT_HW_RESET		1
+#define	WAIT_HW_DISABLE		0
+static void isi_hw_enable_interrupt(struct atmel_isi *isi, int type)
+{
+	if (type == WAIT_HW_RESET) {
+		isi_writel(isi, ISI_INTEN, ISI_CTRL_SRST);
+		isi_writel(isi, ISI_CTRL, ISI_CTRL_SRST);
+	} else {
+		isi_writel(isi, ISI_INTEN, ISI_CTRL_DIS);
+		isi_writel(isi, ISI_CTRL, ISI_CTRL_DIS);
+	}
+}
+
 static int atmel_isi_wait_status(struct atmel_isi *isi, int wait_reset)
 {
 	unsigned long timeout;
@@ -285,13 +296,7 @@ static int atmel_isi_wait_status(struct atmel_isi *isi, int wait_reset)
 	 */
 	init_completion(&isi->complete);
 
-	if (wait_reset) {
-		isi_writel(isi, ISI_INTEN, ISI_CTRL_SRST);
-		isi_writel(isi, ISI_CTRL, ISI_CTRL_SRST);
-	} else {
-		isi_writel(isi, ISI_INTEN, ISI_CTRL_DIS);
-		isi_writel(isi, ISI_CTRL, ISI_CTRL_DIS);
-	}
+	isi_hw_enable_interrupt(isi, wait_reset);
 
 	timeout = wait_for_completion_timeout(&isi->complete,
 			msecs_to_jiffies(500));
@@ -498,7 +503,7 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	pm_runtime_get_sync(ici->v4l2_dev.dev);
 
 	/* Reset ISI */
-	ret = atmel_isi_wait_status(isi, WAIT_ISI_RESET);
+	ret = atmel_isi_wait_status(isi, WAIT_HW_RESET);
 	if (ret < 0) {
 		dev_err(icd->parent, "Reset ISI timed out\n");
 		pm_runtime_put(ici->v4l2_dev.dev);
@@ -555,7 +560,7 @@ static void stop_streaming(struct vb2_queue *vq)
 			ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
 
 	/* Disable ISI and wait for it is done */
-	ret = atmel_isi_wait_status(isi, WAIT_ISI_DISABLE);
+	ret = atmel_isi_wait_status(isi, WAIT_HW_DISABLE);
 	if (ret < 0)
 		dev_err(icd->parent, "Disable ISI timed out\n");
 
