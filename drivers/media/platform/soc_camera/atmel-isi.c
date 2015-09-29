@@ -14,6 +14,7 @@
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
+#include <linux/of_device.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -93,6 +94,7 @@ struct atmel_isi {
 	struct frame_buffer		*active;
 
 	struct soc_camera_host		soc_host;
+	struct at91_camera_hw_ops	*hw_ops;
 };
 
 static void isi_writel(struct atmel_isi *isi, u32 reg, u32 val)
@@ -103,6 +105,19 @@ static u32 isi_readl(struct atmel_isi *isi, u32 reg)
 {
 	return readl(isi->regs + reg);
 }
+
+struct at91_camera_hw_ops {
+	void (*start_dma)(struct atmel_isi *isi, struct frame_buffer *buffer,
+			  bool enable_irq);
+	void (*hw_initialize)(struct atmel_isi *isi);
+	void (*hw_uninitialize)(struct atmel_isi *isi);
+	void (*hw_configure)(struct atmel_isi *isi, u32 width, u32 height,
+			     const struct soc_camera_format_xlate *xlate);
+	irqreturn_t (*interrupt)(int irq, void *dev_id);
+	void (*init_dma_desc)(union fbd *p_fdb, u32 fb_addr,
+			      u32 next_fbd_addr);
+	void (*hw_enable_interrupt)(struct atmel_isi *isi, int type);
+};
 
 static u32 setup_cfg2_yuv_swap(struct atmel_isi *isi,
 		const struct soc_camera_format_xlate *xlate)
@@ -207,7 +222,6 @@ static bool is_supported(struct soc_camera_device *icd,
 	}
 }
 
-static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer, bool irq);
 static irqreturn_t atmel_isi_handle_streaming(struct atmel_isi *isi)
 {
 	if (isi->active) {
@@ -226,7 +240,8 @@ static irqreturn_t atmel_isi_handle_streaming(struct atmel_isi *isi)
 		/* start next dma frame. */
 		isi->active = list_entry(isi->video_buffer_list.next,
 					struct frame_buffer, list);
-		start_dma(isi, isi->active, false);
+
+		(*isi->hw_ops->start_dma)(isi, isi->active, false);
 	}
 	return IRQ_HANDLED;
 }
@@ -284,7 +299,7 @@ static int atmel_isi_wait_status(struct atmel_isi *isi, int wait_reset)
 	 */
 	init_completion(&isi->complete);
 
-	isi_hw_enable_interrupt(isi, wait_reset);
+	(*isi->hw_ops->hw_enable_interrupt)(isi, wait_reset);
 
 	timeout = wait_for_completion_timeout(&isi->complete,
 			msecs_to_jiffies(500));
@@ -353,6 +368,7 @@ static int buffer_prepare(struct vb2_buffer *vb)
 	struct atmel_isi *isi = ici->priv;
 	unsigned long size;
 	struct isi_dma_desc *desc;
+	u32 vb_addr;
 
 	size = icd->sizeimage;
 
@@ -376,7 +392,8 @@ static int buffer_prepare(struct vb2_buffer *vb)
 			list_del_init(&desc->list);
 
 			/* Initialize the dma descriptor */
-			isi_hw_init_dma_desc(desc->p_fbd, vb2_dma_contig_plane_dma_addr(vb, 0), 0);
+			vb_addr = vb2_dma_contig_plane_dma_addr(vb, 0);
+			(*isi->hw_ops->init_dma_desc)(desc->p_fbd, vb_addr, 0);
 
 			buf->p_dma_desc = desc;
 		}
@@ -443,7 +460,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	if (isi->active == NULL) {
 		isi->active = buf;
 		if (vb2_is_streaming(vb->vb2_queue))
-			start_dma(isi, buf, true);
+			(*isi->hw_ops->start_dma)(isi, buf, true);
 	}
 	spin_unlock_irqrestore(&isi->lock, flags);
 }
@@ -520,15 +537,15 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 		return ret;
 	}
 
-	isi_hw_initialize(isi);
+	(*isi->hw_ops->hw_initialize)(isi);
 
-	configure_geometry(isi, icd->user_width, icd->user_height,
+	(*isi->hw_ops->hw_configure)(isi, icd->user_width, icd->user_height,
 				icd->current_fmt);
 
 	spin_lock_irq(&isi->lock);
 
 	if (count)
-		start_dma(isi, isi->active, true);
+		(*isi->hw_ops->start_dma)(isi, isi->active, true);
 
 	spin_unlock_irq(&isi->lock);
 
@@ -554,7 +571,7 @@ static void stop_streaming(struct vb2_queue *vq)
 	}
 	spin_unlock_irq(&isi->lock);
 
-	isi_hw_uninitialize(isi);
+	(*isi->hw_ops->hw_uninitialize)(isi);
 
 	/* Disable ISI and wait for it is done */
 	ret = atmel_isi_wait_status(isi, WAIT_HW_DISABLE);
@@ -1011,6 +1028,7 @@ static int atmel_isi_parse_dt(struct atmel_isi *isi,
 	return 0;
 }
 
+static const struct of_device_id atmel_isi_of_match[];
 static int atmel_isi_probe(struct platform_device *pdev)
 {
 	unsigned int irq;
@@ -1032,6 +1050,9 @@ static int atmel_isi_probe(struct platform_device *pdev)
 	ret = atmel_isi_parse_dt(isi, pdev);
 	if (ret)
 		return ret;
+
+	isi->hw_ops = (struct at91_camera_hw_ops *)
+		of_match_device(atmel_isi_of_match, &pdev->dev)->data;
 
 	isi->active = NULL;
 	spin_lock_init(&isi->lock);
@@ -1078,7 +1099,8 @@ static int atmel_isi_probe(struct platform_device *pdev)
 		goto err_req_irq;
 	}
 
-	ret = devm_request_irq(&pdev->dev, irq, isi_interrupt, 0, "isi", isi);
+	ret = devm_request_irq(&pdev->dev, irq, isi->hw_ops->interrupt, 0,
+			       "isi", isi);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to request irq %d\n", irq);
 		goto err_req_irq;
@@ -1137,13 +1159,23 @@ static int atmel_isi_runtime_resume(struct device *dev)
 }
 #endif /* CONFIG_PM */
 
+static struct at91_camera_hw_ops at91sam9g45_ops = {
+	.hw_initialize = isi_hw_initialize,
+	.hw_uninitialize = isi_hw_uninitialize,
+	.hw_configure = configure_geometry,
+	.start_dma = start_dma,
+	.interrupt = isi_interrupt,
+	.init_dma_desc = isi_hw_init_dma_desc,
+	.hw_enable_interrupt = isi_hw_enable_interrupt,
+};
+
 static const struct dev_pm_ops atmel_isi_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(atmel_isi_runtime_suspend,
 				atmel_isi_runtime_resume, NULL)
 };
 
 static const struct of_device_id atmel_isi_of_match[] = {
-	{ .compatible = "atmel,at91sam9g45-isi" },
+	{ .compatible = "atmel,at91sam9g45-isi", .data = &at91sam9g45_ops },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, atmel_isi_of_match);
