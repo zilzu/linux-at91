@@ -473,6 +473,27 @@ static void isi_hw_initialize(struct atmel_isi *isi)
 	isi_writel(isi, ISI_CFG1, cfg1);
 }
 
+static void isi_hw_uninitialize(struct atmel_isi *isi)
+{
+	unsigned long timeout;
+
+	if (!isi->enable_preview_path) {
+		timeout = jiffies + FRAME_INTERVAL_MILLI_SEC * HZ;
+		/* Wait until the end of the current frame. */
+		while ((isi_readl(isi, ISI_STATUS) & ISI_CTRL_CDC) &&
+				time_before(jiffies, timeout))
+			msleep(1);
+
+		if (time_after(jiffies, timeout))
+			dev_err(isi->soc_host.v4l2_dev.dev,
+				"Timeout waiting for finishing codec request\n");
+	}
+
+	/* Disable interrupts */
+	isi_writel(isi, ISI_INTDIS,
+			ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
+}
+
 static int start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct soc_camera_device *icd = soc_camera_from_vb2q(vq);
@@ -513,32 +534,18 @@ static void stop_streaming(struct vb2_queue *vq)
 	struct atmel_isi *isi = ici->priv;
 	struct frame_buffer *buf, *node;
 	int ret = 0;
-	unsigned long timeout;
 
 	spin_lock_irq(&isi->lock);
 	isi->active = NULL;
 	/* Release all active buffers */
 	list_for_each_entry_safe(buf, node, &isi->video_buffer_list, list) {
 		list_del_init(&buf->list);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		if (buf != isi->active)
+			vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irq(&isi->lock);
 
-	if (!isi->enable_preview_path) {
-		timeout = jiffies + FRAME_INTERVAL_MILLI_SEC * HZ;
-		/* Wait until the end of the current frame. */
-		while ((isi_readl(isi, ISI_STATUS) & ISI_CTRL_CDC) &&
-				time_before(jiffies, timeout))
-			msleep(1);
-
-		if (time_after(jiffies, timeout))
-			dev_err(icd->parent,
-				"Timeout waiting for finishing codec request\n");
-	}
-
-	/* Disable interrupts */
-	isi_writel(isi, ISI_INTDIS,
-			ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
+	isi_hw_uninitialize(isi);
 
 	/* Disable ISI and wait for it is done */
 	ret = atmel_isi_wait_status(isi, WAIT_HW_DISABLE);
