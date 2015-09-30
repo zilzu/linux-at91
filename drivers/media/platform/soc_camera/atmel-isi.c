@@ -465,6 +465,12 @@ static void isi_hw_initialize(struct atmel_isi *isi)
 	u32 common_flags = isi->bus_param;
 	u32 cfg1 = 0;
 
+	/* Disable all interrupts */
+	isi_writel(isi, ISI_INTDIS, (u32)~0UL);
+
+	/* Clear any pending interrupt */
+	isi_readl(isi, ISI_STATUS);
+
 	/* set bus param for ISI */
 	if (common_flags & V4L2_MBUS_HSYNC_ACTIVE_LOW)
 		cfg1 |= ISI_CFG1_HSYNC_POL_ACTIVE_LOW;
@@ -500,8 +506,6 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 		pm_runtime_put(ici->v4l2_dev.dev);
 		return ret;
 	}
-	/* Disable all interrupts */
-	isi_writel(isi, ISI_INTDIS, (u32)~0UL);
 
 	isi_hw_initialize(isi);
 
@@ -509,8 +513,6 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 				icd->current_fmt);
 
 	spin_lock_irq(&isi->lock);
-	/* Clear any pending interrupt */
-	isi_readl(isi, ISI_STATUS);
 
 	if (count)
 		start_dma(isi, isi->active);
