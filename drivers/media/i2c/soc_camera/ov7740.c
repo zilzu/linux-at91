@@ -354,10 +354,12 @@ static int ov7740_s_power(struct v4l2_subdev *sd, int on)
 	struct soc_camera_subdev_desc *ssdd = soc_camera_i2c_to_desc(client);
 	struct ov7740_priv *priv = to_ov7740(client);
 
-	if (on)
-		clk_prepare_enable(priv->xvclk);
-	else
-		clk_disable_unprepare(priv->xvclk);
+	if (priv->xvclk) {
+		if (on)
+			clk_prepare_enable(priv->xvclk);
+		else
+			clk_disable_unprepare(priv->xvclk);
+	}
 
 	return soc_camera_set_power(&client->dev, ssdd, priv->clk, on);
 }
@@ -700,8 +702,8 @@ static int ov7740_probe(struct i2c_client *client,
 
 	priv->xvclk = devm_clk_get(&client->dev, "xvclk");
 	if (IS_ERR(priv->xvclk)) {
-		ret = PTR_ERR(priv->xvclk);
-		goto err_clk;
+		dev_err(&client->dev, "Missing xvclk!\n");
+		priv->xvclk = NULL;
 	}
 
 	v4l2_i2c_subdev_init(&priv->subdev, client, &ov7740_subdev_ops);
