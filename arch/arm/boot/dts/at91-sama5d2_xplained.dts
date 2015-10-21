@@ -140,6 +140,12 @@
 						bus-width = <8>;
 						vsync-active = <0>;
 					};
+
+					isc_1: endpoint@1 {
+						remote-endpoint = <&ov7740_0>;
+						bus-width = <8>;
+						vsync-active = <0>;
+					};
 				};
 
 			};
@@ -312,6 +318,22 @@
 					port {
 						ov2640_0: endpoint {
 							remote-endpoint = <&isc_0>;
+							bus-width = <8>;
+						};
+					};
+				};
+
+				ov7740: camera@0x21 {
+					compatible = "ovti,ov7740";
+					reg = <0x21>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_sensor_power &pinctrl_sensor_reset>;
+					resetb-gpios = <&pioA 43 GPIO_ACTIVE_LOW>;
+					pwdn-gpios = <&pioA 44 GPIO_ACTIVE_HIGH>;
+
+					port {
+						ov7740_0: endpoint {
+							remote-endpoint = <&isc_1>;
 							bus-width = <8>;
 						};
 					};
