@@ -117,6 +117,7 @@ struct at91_camera_hw_ops {
 	void (*init_dma_desc)(union fbd *p_fdb, u32 fb_addr,
 			      u32 next_fbd_addr);
 	void (*hw_enable_interrupt)(struct atmel_isi *isi, int type);
+	void (*hw_set_clock)(struct atmel_isi *isi, bool enable_clk);
 };
 
 static u32 setup_cfg2_yuv_swap(struct atmel_isi *isi,
@@ -944,6 +945,24 @@ static int isi_camera_set_parm(struct soc_camera_device *icd, struct v4l2_stream
 	return 0;
 }
 
+static int clock_start(struct soc_camera_host *ici)
+{
+	struct atmel_isi *isi = ici->priv;
+
+	if (isi->hw_ops->hw_set_clock)
+		(*isi->hw_ops->hw_set_clock)(isi, true);
+
+	return 0;
+}
+
+static void clock_stop(struct soc_camera_host *ici)
+{
+	struct atmel_isi *isi = ici->priv;
+
+	if (isi->hw_ops->hw_set_clock)
+		(*isi->hw_ops->hw_set_clock)(isi, false);
+}
+
 static struct soc_camera_host_ops isi_soc_camera_host_ops = {
 	.owner		= THIS_MODULE,
 	.add		= isi_camera_add_device,
@@ -957,6 +976,8 @@ static struct soc_camera_host_ops isi_soc_camera_host_ops = {
 	.set_bus_param	= isi_camera_set_bus_param,
 	.set_parm	= isi_camera_set_parm,
 	.get_parm	= isi_camera_set_parm,
+	.clock_start	= clock_start,
+	.clock_stop	= clock_stop,
 };
 
 /* -----------------------------------------------------------------------*/
