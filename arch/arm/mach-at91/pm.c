@@ -24,6 +24,8 @@
 #include <linux/platform_device.h>
 #include <linux/io.h>
 #include <linux/clk/at91_pmc.h>
+#include <linux/mfd/syscon.h>
+#include <linux/regmap.h>
 
 #include <asm/irq.h>
 #include <linux/atomic.h>
@@ -404,6 +406,98 @@ static void __init at91_pm_sram_init(void)
 			&at91_pm_suspend_in_sram, at91_pm_suspend_in_sram_sz);
 }
 
+static int __init at91_pmc_fast_startup_init(void)
+{
+	struct device_node *np;
+	struct regmap *regmap;
+	u32 mode = 0, polarity = 0;
+
+	np = of_find_compatible_node(NULL, NULL,
+				     "atmel,sama5d2-pmc-fast-startup");
+	if (!np)
+		return -ENODEV;
+
+	regmap = syscon_node_to_regmap(of_get_parent(np));
+	if (IS_ERR(regmap)) {
+		pr_info("AT91: failed to find PMC fast startup\n");
+		return PTR_ERR(regmap);
+	}
+
+	mode |= of_property_read_bool(np, "atmel,fast-startup-wake-up") ?
+		AT91_PMC_FSTT0 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-secumod") ?
+		AT91_PMC_FSTT1 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu0") ?
+		AT91_PMC_FSTT2 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu1") ?
+		AT91_PMC_FSTT3 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu2") ?
+		AT91_PMC_FSTT4 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu3") ?
+		AT91_PMC_FSTT5 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu4") ?
+		AT91_PMC_FSTT6 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu5") ?
+		AT91_PMC_FSTT7 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu6") ?
+		AT91_PMC_FSTT8 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-piobu7") ?
+		AT91_PMC_FSTT9 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-gmac-wol") ?
+		AT91_PMC_FSTT10 : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-rtc-alarm") ?
+		AT91_PMC_RTCAL : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-usb-resume") ?
+		AT91_PMC_USBAL : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-sdmmc-cd") ?
+		AT91_PMC_SDMMC_CD : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-rxlp-match") ?
+		AT91_PMC_RXLP_MCE : 0;
+	mode |= of_property_read_bool(np, "atmel,fast-startup-acc-comparison") ?
+		AT91_PMC_ACC_CE : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-wkup-pin-high") ? AT91_PMC_FSTP0 : 0;
+
+	if (mode & AT91_PMC_FSTT1)
+		polarity |= AT91_PMC_FSTP1;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu0-high") ? AT91_PMC_FSTP2 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu1-high") ? AT91_PMC_FSTP3 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu2-high") ? AT91_PMC_FSTP4 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu3-high") ? AT91_PMC_FSTP5 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu4-high") ? AT91_PMC_FSTP6 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu5-high") ? AT91_PMC_FSTP7 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu6-high") ? AT91_PMC_FSTP8 : 0;
+
+	polarity |= of_property_read_bool(np,
+		"atmel,fast-startup-piobu7-high") ? AT91_PMC_FSTP9 : 0;
+
+	if (mode & AT91_PMC_FSTT10)
+		polarity |= AT91_PMC_FSTP10;
+
+	regmap_write(regmap, AT91_PMC_FSMR, mode);
+
+	regmap_write(regmap, AT91_PMC_FSPR, polarity);
+
+	of_node_put(np);
+
+	return 0;
+}
+
 static const struct of_device_id atmel_pmc_ids[] = {
 	{ .compatible = "atmel,at91rm9200-pmc"  },
 	{ .compatible = "atmel,at91sam9260-pmc" },
@@ -477,4 +571,6 @@ void __init at91sam9x5_pm_init(void)
 
 	if (readl(pmc + AT91_PMC_VERSION) >= SAMA5D2_PMC_VERSION)
 		at91_pm_data.ulp_mode = ULP1_MODE;
+
+	at91_pmc_fast_startup_init();
 }
