@@ -121,6 +121,20 @@
 			isc: isc@f0008000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_isc_base &pinctrl_isc_data_8bit &pinctrl_isc_data_9_10 &pinctrl_isc_data_11_12>;
+
+				port {
+					isc_0: endpoint@1 {
+						remote-endpoint = <&ov7740_0>;
+						bus-width = <8>;
+						vsync-active = <0>;
+					};
+
+					isc_1: endpoint@0 {
+						remote-endpoint = <&ov2640_0>;
+						bus-width = <8>;
+						vsync-active = <0>;
+					};
+				};
 			};
 
 			qspi0: qspi@f0020000 {
@@ -167,6 +181,38 @@
 				pinctrl-0 = <&pinctrl_i2c0_default>;
 				atmel,twd-hold-cycles = <25>;
 				status = "okay";
+
+				ov7740: camera@0x21 {
+					compatible = "ovti,ov7740";
+					reg = <0x21>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_sensor_power &pinctrl_sensor_reset>;
+					resetb-gpios = <&pioA 43 GPIO_ACTIVE_LOW>;
+					pwdn-gpios = <&pioA 44 GPIO_ACTIVE_HIGH>;
+
+					port {
+						ov7740_0: endpoint {
+							remote-endpoint = <&isc_0>;
+							bus-width = <8>;
+						};
+					};
+				};
+
+				ov2640: camera@0x30 {
+					compatible = "ovti,ov2640";
+					reg = <0x30>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_sensor_power &pinctrl_sensor_reset>;
+					resetb-gpios = <&pioA 43 GPIO_ACTIVE_LOW>;
+					pwdn-gpios = <&pioA 44 GPIO_ACTIVE_HIGH>;
+
+					port {
+						ov2640_0: endpoint {
+							remote-endpoint = <&isc_1>;
+							bus-width = <8>;
+						};
+					};
+				};
 
 				pmic: act8865@5b {
 					compatible = "active-semi,act8865";
@@ -448,6 +494,16 @@
 							 <PIN_PA30__SDMMC1_CD>;
 						bias-disable;
 					};
+				};
+
+				pinctrl_sensor_power: sensor_power {
+					pinmux = <PIN_PB12__GPIO>;
+					bias-disable;
+				};
+
+				pinctrl_sensor_reset: sensor_reset {
+					pinmux = <PIN_PB11__GPIO>;
+					bias-disable;
 				};
 
 				pinctrl_spi0_default: spi0_default {
