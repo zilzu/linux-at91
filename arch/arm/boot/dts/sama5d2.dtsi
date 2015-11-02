@@ -1195,6 +1195,11 @@
 				clock-names = "pclk", "gclk", "aclk";
 				status = "disabled";
 			};
+
+			chipid@fc069000 {
+				compatible = "atmel,sama5d2-chipid";
+				reg = <0xfc069000 0x8>;
+			};
 		};
 	};
 };
