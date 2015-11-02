@@ -38,10 +38,8 @@ int __init at91_get_cidr_exid_from_dbgu(u32 *cidr, u32 *exid)
 	if (!np)
 		np = of_find_compatible_node(NULL, NULL,
 					     "atmel,at91sam9260-dbgu");
-	if (!np) {
-		pr_warn("Could not find DBGU node");
+	if (!np)
 		return -ENODEV;
-	}
 
 	regs = of_iomap(np, 0);
 	of_node_put(np);
@@ -65,10 +63,8 @@ int __init at91_get_cidr_exid_from_chipid(u32 *cidr, u32 *exid)
 	void __iomem *regs;
 
 	np = of_find_compatible_node(NULL, NULL, "atmel,sama5d2-chipid");
-	if (!np) {
-		pr_warn("Could not find Chip ID node");
+	if (!np)
 		return -ENODEV;
-	}
 
 	regs = of_iomap(np, 0);
 	of_node_put(np);
@@ -102,8 +98,11 @@ struct soc_device * __init at91_soc_init(const struct at91_soc *socs)
 	ret = at91_get_cidr_exid_from_dbgu(&cidr, &exid);
 	if (ret)
 		ret = at91_get_cidr_exid_from_chipid(&cidr, &exid);
-	if (ret)
+	if (ret) {
+		if (ret == -ENODEV)
+			pr_warn("Could not find identification node");
 		return NULL;
+	}
 
 	for (soc = socs; soc->name; soc++) {
 		if (soc->cidr_match != (cidr & AT91_CIDR_MATCH_MASK))
