@@ -223,42 +223,6 @@ static void configure_geometry(struct atmel_isi *isi, u32 width,
 	return;
 }
 
-static void isc_configure_geometry(struct atmel_isi *isc, u32 width,
-		u32 height, const struct soc_camera_format_xlate *xlate)
-{
-	/* According to sensor's output format to set cfg2 */
-	switch (xlate->code) {
-	/* YUV, including grey */
-	case MEDIA_BUS_FMT_Y8_1X8:
-	case MEDIA_BUS_FMT_VYUY8_2X8:
-	case MEDIA_BUS_FMT_UYVY8_2X8:
-	case MEDIA_BUS_FMT_YVYU8_2X8:
-	case MEDIA_BUS_FMT_YUYV8_2X8:
-	default:
-		isi_writel(isc, ISC_CFA_CTRL, 0);
-		isi_writel(isc, ISC_GAM_CTRL, 0);
-		isi_writel(isc, ISC_RLP_CFG, ISC_RLP_CFG_MODE_DAT8);
-		isi_writel(isc, ISC_DCFG, ISC_DCFG_IMODE_PACKED8);
-		break;
-	/* Bayer RGB */
-	case MEDIA_BUS_FMT_SBGGR8_1X8:
-		if (xlate->host_fmt->fourcc == V4L2_PIX_FMT_RGB565) {
-			isi_writel(isc, ISC_CFA_CTRL, 1);
-			isi_writel(isc, ISC_CFA_CFG, 3 | 1 << 4);
-			isi_writel(isc, ISC_GAM_CTRL, ISC_GAM_CTRL_ENABLE | ISC_GAM_CTRL_ENABLE_ALL_CHAN);
-			isi_writel(isc, ISC_RLP_CFG, ISC_RLP_CFG_MODE_RGB565);
-			isi_writel(isc, ISC_DCFG, ISC_DCFG_IMODE_PACKED16);
-		} else {
-			/* output to Bayer RGB */
-			isi_writel(isc, ISC_CFA_CTRL, 0);
-			isi_writel(isc, ISC_GAM_CTRL, 0);
-			isi_writel(isc, ISC_RLP_CFG, ISC_RLP_CFG_MODE_DAT8);
-			isi_writel(isc, ISC_DCFG, ISC_DCFG_IMODE_PACKED8);
-		}
-		break;
-	}
-}
-
 static bool is_supported(struct soc_camera_device *icd,
 		const u32 pixformat)
 {
@@ -332,34 +296,6 @@ static irqreturn_t isi_interrupt(int irq, void *dev_id)
 	return ret;
 }
 
-static irqreturn_t isc_interrupt(int irq, void *dev_id)
-{
-	struct atmel_isi *isc = dev_id;
-	u32 status, mask, pending;
-	irqreturn_t ret = IRQ_NONE;
-
-	spin_lock(&isc->lock);
-
-	status = isi_readl(isc, ISC_INTSR);
-	mask = isi_readl(isc, ISC_INTMASK);
-	pending = status & mask;
-
-	if (pending & ISC_INT_SWRST_COMPLETE) {
-		complete(&isc->complete);
-		isi_writel(isc, ISC_INTEN, ISC_INT_SWRST_COMPLETE);
-		ret = IRQ_HANDLED;
-	} else if (pending & ISC_INT_DISABLE_COMPLETE) {
-		complete(&isc->complete);
-		isi_writel(isc, ISC_INTEN, ISC_INT_DISABLE_COMPLETE);
-		ret = IRQ_HANDLED;
-	} else if (likely(pending & ISC_INT_DMA_DONE)) {
-		ret = atmel_isi_handle_streaming(isc);
-	}
-
-	spin_unlock(&isc->lock);
-	return ret;
-}
-
 #define	WAIT_HW_RESET		1
 #define	WAIT_HW_DISABLE		0
 static void isi_hw_enable_interrupt(struct atmel_isi *isi, int type)
@@ -370,17 +306,6 @@ static void isi_hw_enable_interrupt(struct atmel_isi *isi, int type)
 	} else {
 		isi_writel(isi, ISI_INTEN, ISI_CTRL_DIS);
 		isi_writel(isi, ISI_CTRL, ISI_CTRL_DIS);
-	}
-}
-
-static void isc_hw_enable_interrupt(struct atmel_isi *isc, int type)
-{
-	if (type == WAIT_HW_RESET) {
-		isi_writel(isc, ISC_INTEN, ISC_INT_SWRST_COMPLETE);
-		isi_writel(isc, ISC_CTRLDIS, ISC_CTRLDIS_SWRST);
-	} else {
-		isi_writel(isc, ISC_INTEN, ISC_INT_DISABLE_COMPLETE);
-		isi_writel(isc, ISC_CTRLDIS, ISC_CTRLDIS_CAPTURE);
 	}
 }
 
@@ -452,15 +377,6 @@ static void isi_hw_init_dma_desc(union fbd *p_fdb, u32 fb_addr, u32 next_fbd_add
 	p->fb_address = fb_addr;
 	p->next_fbd_address = next_fbd_addr;
 	p->dma_ctrl = ISI_DMA_CTRL_WB;
-}
-
-static void isc_hw_init_dma_desc(union fbd *p_fbd, u32 fb_addr, u32 next_fbd_addr)
-{
-	struct fbd_view *p = &(p_fbd->fbd_isc);
-	p->fb_address = fb_addr;
-	p->next_fbd_address = 0;
-	p->fb_stride = 0;
-	p->dma_ctrl = ISC_DCTRL_DESC_ENABLE | ISC_DCTRL_DVIEW_PACKED;
 }
 
 static int buffer_prepare(struct vb2_buffer *vb)
@@ -549,20 +465,6 @@ static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer,
 	isi_writel(isi, ISI_CTRL, ctrl);
 }
 
-static void isc_start_dma(struct atmel_isi *isc, struct frame_buffer *buffer,
-		bool enable_irq)
-{
-	if (enable_irq)
-		isi_writel(isc, ISC_INTEN, ISC_INT_DMA_DONE);
-
-	isi_writel(isc, ISC_DNDA, (u32)buffer->p_dma_desc->fbd_phys);
-	isi_writel(isc, ISC_DCTRL, ISC_DCTRL_DESC_ENABLE | ISC_DCTRL_DVIEW_PACKED |
-				ISC_DCTRL_DMA_DONE_INT_ENABLE | ISC_DCTRL_WRITE_BACK_ENABLE);
-	isi_writel(isc, ISC_DAD0, buffer->p_dma_desc->p_fbd->fbd_isc.fb_address);
-
-	isi_writel(isc, ISC_CTRLEN, ISC_CTRLEN_CAPTURE);
-}
-
 static void buffer_queue(struct vb2_buffer *vb)
 {
 	struct soc_camera_device *icd = soc_camera_from_vb2q(vb->vb2_queue);
@@ -637,52 +539,6 @@ static void isi_hw_uninitialize(struct atmel_isi *isi)
 			ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
 }
 
-static void isc_hw_initialize(struct atmel_isi *isc)
-{
-	u32 pfe_cfg0 = 0;
-
-	if (isc->bus_param & V4L2_MBUS_HSYNC_ACTIVE_LOW)
-		pfe_cfg0 |= ISC_PFE_HSYNC_ACTIVE_LOW;
-	if (isc->bus_param & V4L2_MBUS_VSYNC_ACTIVE_LOW)
-		pfe_cfg0 |= ISC_PFE_VSYNC_ACTIVE_LOW;
-	if (isc->bus_param & V4L2_MBUS_PCLK_SAMPLE_FALLING)
-		pfe_cfg0 |= ISC_PFE_PIX_CLK_FALLING_EDGE;
-
-	pfe_cfg0 |= ISC_PFE_MODE_PROGRESSIVE | ISC_PFE_CONT_VIDEO;
-
-	/* TODO: need to revisit. */
-	pfe_cfg0 |= ISC_PFE_BPS_8_BIT;
-
-	isi_writel(isc, ISC_PFE_CFG0, pfe_cfg0);
-}
-
-static void isc_hw_uninitialize(struct atmel_isi *isc)
-{
-	unsigned long timeout;
-
-	timeout = jiffies + FRAME_INTERVAL_MILLI_SEC * HZ;
-	/* Wait until the end of the current frame. */
-	while ((isi_readl(isc, ISC_CTRLSR) & ISC_CTRLSR_CAPTURE) && time_before(jiffies, timeout))
-		msleep(1);
-
-	if (time_after(jiffies, timeout))
-		dev_err(isc->soc_host.v4l2_dev.dev,
-			"Timeout waiting for finishing codec request\n");
-
-	/* Disable interrupts */
-	isi_writel(isc, ISC_INTDIS, ISC_INT_DMA_DONE);
-}
-
-static void isc_hw_set_clock(struct atmel_isi *isc, bool enable_clk)
-{
-	if (enable_clk)
-		/* as the clock (ISC_MCK) is provided by peripheral clock, so just resume pm */
-		pm_runtime_get_sync(isc->soc_host.v4l2_dev.dev);
-	else
-		/* as the clock (ISC_MCK) is provided by peripheral clock, so just suspend pm */
-		pm_runtime_put(isc->soc_host.v4l2_dev.dev);
-}
-
 static int start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct soc_camera_device *icd = soc_camera_from_vb2q(vq);
@@ -755,6 +611,179 @@ static struct vb2_ops isi_video_qops = {
 	.wait_prepare		= vb2_ops_wait_prepare,
 	.wait_finish		= vb2_ops_wait_finish,
 };
+
+/* ------------------------------------------------------------------
+	ISC hardware operations
+   ------------------------------------------------------------------*/
+static void isc_hw_enable_interrupt(struct atmel_isi *isc, int type)
+{
+	if (type == WAIT_HW_RESET) {
+		isi_writel(isc, ISC_INTEN, ISC_INT_SWRST_COMPLETE);
+		isi_writel(isc, ISC_CTRLDIS, ISC_CTRLDIS_SWRST);
+	} else {
+		isi_writel(isc, ISC_INTEN, ISC_INT_DISABLE_COMPLETE);
+		isi_writel(isc, ISC_CTRLDIS, ISC_CTRLDIS_CAPTURE);
+	}
+}
+
+static void isc_hw_init_dma_desc(union fbd *p_fbd, u32 fb_addr, u32 next_fbd_addr)
+{
+	struct fbd_view *p = &(p_fbd->fbd_isc);
+	p->fb_address = fb_addr;
+	p->next_fbd_address = 0;
+	p->fb_stride = 0;
+	p->dma_ctrl = ISC_DCTRL_DESC_ENABLE | ISC_DCTRL_DVIEW_PACKED;
+}
+
+static void isc_start_dma(struct atmel_isi *isc, struct frame_buffer *buffer,
+		bool enable_irq)
+{
+	if (enable_irq)
+		isi_writel(isc, ISC_INTEN, ISC_INT_DMA_DONE);
+
+	isi_writel(isc, ISC_DNDA, (u32)buffer->p_dma_desc->fbd_phys);
+	isi_writel(isc, ISC_DCTRL, ISC_DCTRL_DESC_ENABLE | ISC_DCTRL_DVIEW_PACKED |
+				ISC_DCTRL_DMA_DONE_INT_ENABLE | ISC_DCTRL_WRITE_BACK_ENABLE);
+	isi_writel(isc, ISC_DAD0, buffer->p_dma_desc->p_fbd->fbd_isc.fb_address);
+
+	isi_writel(isc, ISC_CTRLEN, ISC_CTRLEN_CAPTURE);
+}
+
+static void isc_hw_initialize(struct atmel_isi *isc)
+{
+	u32 pfe_cfg0 = 0;
+
+	if (isc->bus_param & V4L2_MBUS_HSYNC_ACTIVE_LOW)
+		pfe_cfg0 |= ISC_PFE_HSYNC_ACTIVE_LOW;
+	if (isc->bus_param & V4L2_MBUS_VSYNC_ACTIVE_LOW)
+		pfe_cfg0 |= ISC_PFE_VSYNC_ACTIVE_LOW;
+	if (isc->bus_param & V4L2_MBUS_PCLK_SAMPLE_FALLING)
+		pfe_cfg0 |= ISC_PFE_PIX_CLK_FALLING_EDGE;
+
+	pfe_cfg0 |= ISC_PFE_MODE_PROGRESSIVE | ISC_PFE_CONT_VIDEO;
+
+	/* TODO: need to revisit. */
+	pfe_cfg0 |= ISC_PFE_BPS_8_BIT;
+
+	isi_writel(isc, ISC_PFE_CFG0, pfe_cfg0);
+}
+
+static void isc_hw_uninitialize(struct atmel_isi *isc)
+{
+	unsigned long timeout;
+
+	timeout = jiffies + FRAME_INTERVAL_MILLI_SEC * HZ;
+	/* Wait until the end of the current frame. */
+	while ((isi_readl(isc, ISC_CTRLSR) & ISC_CTRLSR_CAPTURE) && time_before(jiffies, timeout))
+		msleep(1);
+
+	if (time_after(jiffies, timeout))
+		dev_err(isc->soc_host.v4l2_dev.dev,
+			"Timeout waiting for finishing codec request\n");
+
+	/* Disable interrupts */
+	isi_writel(isc, ISC_INTDIS, ISC_INT_DMA_DONE);
+}
+
+static void isc_hw_set_clock(struct atmel_isi *isc, bool enable_clk)
+{
+	if (enable_clk)
+		/* as the clock (ISC_MCK) is provided by peripheral clock, so just resume pm */
+		pm_runtime_get_sync(isc->soc_host.v4l2_dev.dev);
+	else
+		/* as the clock (ISC_MCK) is provided by peripheral clock, so just suspend pm */
+		pm_runtime_put(isc->soc_host.v4l2_dev.dev);
+}
+
+static void isc_configure_geometry(struct atmel_isi *isc, u32 width,
+		u32 height, const struct soc_camera_format_xlate *xlate)
+{
+	/* According to sensor's output format to set cfg2 */
+	switch (xlate->code) {
+	/* YUV, including grey */
+	case MEDIA_BUS_FMT_Y8_1X8:
+	case MEDIA_BUS_FMT_VYUY8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_YVYU8_2X8:
+	case MEDIA_BUS_FMT_YUYV8_2X8:
+	default:
+		isi_writel(isc, ISC_CFA_CTRL, 0);
+		isi_writel(isc, ISC_GAM_CTRL, 0);
+		isi_writel(isc, ISC_RLP_CFG, ISC_RLP_CFG_MODE_DAT8);
+		isi_writel(isc, ISC_DCFG, ISC_DCFG_IMODE_PACKED8);
+		break;
+	/* Bayer RGB */
+	case MEDIA_BUS_FMT_SBGGR8_1X8:
+		if (xlate->host_fmt->fourcc == V4L2_PIX_FMT_RGB565) {
+			isi_writel(isc, ISC_CFA_CTRL, 1);
+			isi_writel(isc, ISC_CFA_CFG, 3 | 1 << 4);
+			isi_writel(isc, ISC_GAM_CTRL, ISC_GAM_CTRL_ENABLE | ISC_GAM_CTRL_ENABLE_ALL_CHAN);
+			isi_writel(isc, ISC_RLP_CFG, ISC_RLP_CFG_MODE_RGB565);
+			isi_writel(isc, ISC_DCFG, ISC_DCFG_IMODE_PACKED16);
+		} else {
+			/* output to Bayer RGB */
+			isi_writel(isc, ISC_CFA_CTRL, 0);
+			isi_writel(isc, ISC_GAM_CTRL, 0);
+			isi_writel(isc, ISC_RLP_CFG, ISC_RLP_CFG_MODE_DAT8);
+			isi_writel(isc, ISC_DCFG, ISC_DCFG_IMODE_PACKED8);
+		}
+		break;
+	}
+}
+
+static irqreturn_t isc_interrupt(int irq, void *dev_id)
+{
+	struct atmel_isi *isc = dev_id;
+	u32 status, mask, pending;
+	irqreturn_t ret = IRQ_NONE;
+
+	spin_lock(&isc->lock);
+
+	status = isi_readl(isc, ISC_INTSR);
+	mask = isi_readl(isc, ISC_INTMASK);
+	pending = status & mask;
+
+	if (pending & ISC_INT_SWRST_COMPLETE) {
+		complete(&isc->complete);
+		isi_writel(isc, ISC_INTEN, ISC_INT_SWRST_COMPLETE);
+		ret = IRQ_HANDLED;
+	} else if (pending & ISC_INT_DISABLE_COMPLETE) {
+		complete(&isc->complete);
+		isi_writel(isc, ISC_INTEN, ISC_INT_DISABLE_COMPLETE);
+		ret = IRQ_HANDLED;
+	} else if (likely(pending & ISC_INT_DMA_DONE)) {
+		ret = atmel_isi_handle_streaming(isc);
+	}
+
+	spin_unlock(&isc->lock);
+	return ret;
+}
+
+static void isc_enable_clock(struct atmel_isi *isc)
+{
+	u32 cfg;
+
+	pm_runtime_get_sync(isc->soc_host.v4l2_dev.dev);
+
+	/*Config the MCK div and select it to isc_clk(hclock) */
+	cfg = ISC_CLKCFG_MCDIV(6) & ISC_CLKCFG_MCDIV_MASK;
+	cfg |= ISC_CLKCFG_MASTER_SEL_HCLOCK;
+
+	isi_writel(isc, ISC_CLKCFG, cfg);
+	while ((isi_readl(isc, ISC_CLKSR) & ISC_CLK_SIP) == ISC_CLK_SIP);
+		isi_writel(isc, ISC_CLKEN, ISC_CLK_MASTER);
+
+	/* keep original clock config */
+	cfg |= ISC_CLKCFG_ICDIV(5) & ISC_CLKCFG_ICDIV_MASK;
+	cfg |= ISC_CLKCFG_ISP_SEL_HCLOCK;
+
+	isi_writel(isc, ISC_CLKCFG, cfg);
+	while ((isi_readl(isc, ISC_CLKSR) & ISC_CLK_SIP) == ISC_CLK_SIP);
+	/* Enable isp clock */
+	isi_writel(isc, ISC_CLKEN, ISC_CLK_ISP);
+
+	pm_runtime_put(isc->soc_host.v4l2_dev.dev);
+}
 
 /* ------------------------------------------------------------------
 	SOC camera operations for the device
@@ -1209,32 +1238,6 @@ static int atmel_isi_parse_dt(struct atmel_isi *isi,
 		isi->pdata.has_emb_sync = true;
 
 	return 0;
-}
-
-static void isc_enable_clock(struct atmel_isi *isc)
-{
-	u32 cfg;
-
-	pm_runtime_get_sync(isc->soc_host.v4l2_dev.dev);
-
-	/*Config the MCK div and select it to isc_clk(hclock) */
-	cfg = ISC_CLKCFG_MCDIV(6) & ISC_CLKCFG_MCDIV_MASK;
-	cfg |= ISC_CLKCFG_MASTER_SEL_HCLOCK;
-
-	isi_writel(isc, ISC_CLKCFG, cfg);
-	while ((isi_readl(isc, ISC_CLKSR) & ISC_CLK_SIP) == ISC_CLK_SIP);
-		isi_writel(isc, ISC_CLKEN, ISC_CLK_MASTER);
-
-	/* keep original clock config */
-	cfg |= ISC_CLKCFG_ICDIV(5) & ISC_CLKCFG_ICDIV_MASK;
-	cfg |= ISC_CLKCFG_ISP_SEL_HCLOCK;
-
-	isi_writel(isc, ISC_CLKCFG, cfg);
-	while ((isi_readl(isc, ISC_CLKSR) & ISC_CLK_SIP) == ISC_CLK_SIP);
-	/* Enable isp clock */
-	isi_writel(isc, ISC_CLKEN, ISC_CLK_ISP);
-
-	pm_runtime_put(isc->soc_host.v4l2_dev.dev);
 }
 
 static const struct of_device_id atmel_isi_of_match[];
