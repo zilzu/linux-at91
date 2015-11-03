@@ -203,6 +203,7 @@ static bool is_supported(struct soc_camera_device *icd,
 	}
 }
 
+static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer, bool irq);
 static irqreturn_t atmel_isi_handle_streaming(struct atmel_isi *isi)
 {
 	if (isi->active) {
@@ -221,19 +222,7 @@ static irqreturn_t atmel_isi_handle_streaming(struct atmel_isi *isi)
 		/* start next dma frame. */
 		isi->active = list_entry(isi->video_buffer_list.next,
 					struct frame_buffer, list);
-		if (!isi->enable_preview_path) {
-			isi_writel(isi, ISI_DMA_C_DSCR,
-				(u32)isi->active->p_dma_desc->fbd_phys);
-			isi_writel(isi, ISI_DMA_C_CTRL,
-				ISI_DMA_CTRL_FETCH | ISI_DMA_CTRL_DONE);
-			isi_writel(isi, ISI_DMA_CHER, ISI_DMA_CHSR_C_CH);
-		} else {
-			isi_writel(isi, ISI_DMA_P_DSCR,
-				(u32)isi->active->p_dma_desc->fbd_phys);
-			isi_writel(isi, ISI_DMA_P_CTRL,
-				ISI_DMA_CTRL_FETCH | ISI_DMA_CTRL_DONE);
-			isi_writel(isi, ISI_DMA_CHER, ISI_DMA_CHSR_P_CH);
-		}
+		start_dma(isi, isi->active, false);
 	}
 	return IRQ_HANDLED;
 }
@@ -398,13 +387,14 @@ static void buffer_cleanup(struct vb2_buffer *vb)
 		list_add(&buf->p_dma_desc->list, &isi->dma_desc_head);
 }
 
-static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer)
+static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer,
+		      bool enable_irq)
 {
 	u32 ctrl;
 
-	/* Enable irq: cxfr for the codec path, pxfr for the preview path */
-	isi_writel(isi, ISI_INTEN,
-			ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
+	if (enable_irq)
+		/* Enable irq: cxfr for the codec path, pxfr for the preview path */
+		isi_writel(isi, ISI_INTEN, ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
 
 	/* Check if already in a frame */
 	if (!isi->enable_preview_path) {
@@ -449,7 +439,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	if (isi->active == NULL) {
 		isi->active = buf;
 		if (vb2_is_streaming(vb->vb2_queue))
-			start_dma(isi, buf);
+			start_dma(isi, buf, true);
 	}
 	spin_unlock_irqrestore(&isi->lock, flags);
 }
@@ -513,7 +503,8 @@ static int start_streaming(struct vb2_queue *vq, unsigned int count)
 	spin_lock_irq(&isi->lock);
 
 	if (count)
-		start_dma(isi, isi->active);
+		start_dma(isi, isi->active, true);
+
 	spin_unlock_irq(&isi->lock);
 
 	return 0;
