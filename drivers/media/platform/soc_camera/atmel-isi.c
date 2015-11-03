@@ -398,11 +398,6 @@ static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer,
 
 	/* Check if already in a frame */
 	if (!isi->enable_preview_path) {
-		if (isi_readl(isi, ISI_STATUS) & ISI_CTRL_CDC) {
-			dev_err(isi->soc_host.icd->parent, "Already in frame handling.\n");
-			return;
-		}
-
 		isi_writel(isi, ISI_DMA_C_DSCR,
 				(u32)buffer->p_dma_desc->fbd_phys);
 		isi_writel(isi, ISI_DMA_C_CTRL,
