@@ -400,9 +400,8 @@ static void buffer_cleanup(struct vb2_buffer *vb)
 
 static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer)
 {
-	u32 ctrl, cfg1;
+	u32 ctrl;
 
-	cfg1 = isi_readl(isi, ISI_CFG1);
 	/* Enable irq: cxfr for the codec path, pxfr for the preview path */
 	isi_writel(isi, ISI_INTEN,
 			ISI_SR_CXFR_DONE | ISI_SR_PXFR_DONE);
@@ -427,10 +426,6 @@ static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer)
 		isi_writel(isi, ISI_DMA_CHER, ISI_DMA_CHSR_P_CH);
 	}
 
-	cfg1 &= ~ISI_CFG1_FRATE_DIV_MASK;
-	/* Enable linked list */
-	cfg1 |= isi->pdata.frate | ISI_CFG1_DISCR;
-
 	/* Enable ISI */
 	ctrl = ISI_CTRL_EN;
 
@@ -438,7 +433,6 @@ static void start_dma(struct atmel_isi *isi, struct frame_buffer *buffer)
 		ctrl |= ISI_CTRL_CDC;
 
 	isi_writel(isi, ISI_CTRL, ctrl);
-	isi_writel(isi, ISI_CFG1, cfg1);
 }
 
 static void buffer_queue(struct vb2_buffer *vb)
@@ -485,6 +479,10 @@ static void isi_hw_initialize(struct atmel_isi *isi)
 		cfg1 |= ISI_CFG1_FULL_MODE;
 
 	cfg1 |= ISI_CFG1_THMASK_BEATS_16;
+
+	cfg1 |= isi->pdata.frate & ISI_CFG1_FRATE_DIV_MASK;
+
+	cfg1 |= ISI_CFG1_DISCR;
 
 	isi_writel(isi, ISI_CTRL, ISI_CTRL_DIS);
 	isi_writel(isi, ISI_CFG1, cfg1);
