@@ -113,6 +113,7 @@ struct atmel_isi {
 
 	struct soc_camera_host		soc_host;
 	struct at91_camera_hw_ops	*hw_ops;
+	struct at91_camera_caps		*caps;
 };
 
 static void isi_writel(struct atmel_isi *isi, u32 reg, u32 val)
@@ -136,6 +137,11 @@ struct at91_camera_hw_ops {
 			      u32 next_fbd_addr);
 	void (*hw_enable_interrupt)(struct atmel_isi *isi, int type);
 	void (*hw_set_clock)(struct atmel_isi *isi, bool enable_clk);
+};
+
+struct at91_camera_caps {
+	struct at91_camera_hw_ops hw_ops;
+	struct soc_mbus_pixelfmt yuv_support_formats[];
 };
 
 static u32 setup_cfg2_yuv_swap(struct atmel_isi *isi,
@@ -893,25 +899,6 @@ static int isi_camera_try_fmt(struct soc_camera_device *icd,
 	return try_or_set_fmt(icd, f, &format);
 }
 
-static const struct soc_mbus_pixelfmt isi_camera_formats[] = {
-	{
-		.fourcc			= V4L2_PIX_FMT_YUYV,
-		.name			= "Packed YUV422 16 bit",
-		.bits_per_sample	= 8,
-		.packing		= SOC_MBUS_PACKING_2X8_PADHI,
-		.order			= SOC_MBUS_ORDER_LE,
-		.layout			= SOC_MBUS_LAYOUT_PACKED,
-	},
-	{
-		.fourcc			= V4L2_PIX_FMT_RGB565,
-		.name			= "RGB565",
-		.bits_per_sample	= 8,
-		.packing		= SOC_MBUS_PACKING_2X8_PADHI,
-		.order			= SOC_MBUS_ORDER_LE,
-		.layout			= SOC_MBUS_LAYOUT_PACKED,
-	},
-};
-
 /* This will be corrected as we get more formats */
 static bool isi_camera_packing_supported(const struct soc_mbus_pixelfmt *fmt)
 {
@@ -966,6 +953,8 @@ static int isi_camera_get_formats(struct soc_camera_device *icd,
 				  struct soc_camera_format_xlate *xlate)
 {
 	struct v4l2_subdev *sd = soc_camera_to_subdev(icd);
+	struct soc_camera_host *ici = to_soc_camera_host(icd->parent);
+	struct atmel_isi *isi = ici->priv;
 	int formats = 0, ret, i, n;
 	/* sensor format */
 	struct v4l2_subdev_mbus_code_enum code = {
@@ -1000,10 +989,12 @@ static int isi_camera_get_formats(struct soc_camera_device *icd,
 	case MEDIA_BUS_FMT_VYUY8_2X8:
 	case MEDIA_BUS_FMT_YUYV8_2X8:
 	case MEDIA_BUS_FMT_YVYU8_2X8:
-		n = ARRAY_SIZE(isi_camera_formats);
+		for (n = 0; isi->caps->yuv_support_formats[n].name != NULL; n++)
+			/* Empty! */;
+
 		formats += n;
 		for (i = 0; xlate && i < n; i++, xlate++) {
-			xlate->host_fmt	= &isi_camera_formats[i];
+			xlate->host_fmt	= isi->caps->yuv_support_formats + i;
 			xlate->code	= code.code;
 			dev_dbg(icd->parent, "Providing format %s using code %d\n",
 				xlate->host_fmt->name, xlate->code);
@@ -1267,8 +1258,9 @@ static int atmel_isi_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	isi->hw_ops = (struct at91_camera_hw_ops *)
+	isi->caps = (struct at91_camera_caps *)
 		of_match_device(atmel_isi_of_match, &pdev->dev)->data;
+	isi->hw_ops = &isi->caps->hw_ops;
 
 	isi->active = NULL;
 	spin_lock_init(&isi->lock);
@@ -1383,25 +1375,54 @@ static int atmel_isi_runtime_resume(struct device *dev)
 }
 #endif /* CONFIG_PM */
 
-static struct at91_camera_hw_ops at91sam9g45_ops = {
-	.hw_initialize = isi_hw_initialize,
-	.hw_uninitialize = isi_hw_uninitialize,
-	.hw_configure = configure_geometry,
-	.start_dma = start_dma,
-	.interrupt = isi_interrupt,
-	.init_dma_desc = isi_hw_init_dma_desc,
-	.hw_enable_interrupt = isi_hw_enable_interrupt,
+static struct at91_camera_caps at91sam9g45_caps = {
+	.hw_ops = {
+		.hw_initialize = isi_hw_initialize,
+		.hw_uninitialize = isi_hw_uninitialize,
+		.hw_configure = configure_geometry,
+		.start_dma = start_dma,
+		.interrupt = isi_interrupt,
+		.init_dma_desc = isi_hw_init_dma_desc,
+		.hw_enable_interrupt = isi_hw_enable_interrupt,
+	},
+
+	.yuv_support_formats = {
+		{
+			.fourcc			= V4L2_PIX_FMT_YUYV,
+			.name			= "Packed YUV422 16 bit",
+			.bits_per_sample	= 8,
+			.packing		= SOC_MBUS_PACKING_2X8_PADHI,
+			.order			= SOC_MBUS_ORDER_LE,
+			.layout			= SOC_MBUS_LAYOUT_PACKED,
+		},
+		{
+			.fourcc			= V4L2_PIX_FMT_RGB565,
+			.name			= "RGB565",
+			.bits_per_sample	= 8,
+			.packing		= SOC_MBUS_PACKING_2X8_PADHI,
+			.order			= SOC_MBUS_ORDER_LE,
+			.layout			= SOC_MBUS_LAYOUT_PACKED,
+		},
+		{ /* terminator */ },
+	},
 };
 
-static struct at91_camera_hw_ops sama5d2_ops = {
-	.hw_initialize = isc_hw_initialize,
-	.hw_uninitialize = isc_hw_uninitialize,
-	.hw_configure = isc_configure_geometry,
-	.start_dma = isc_start_dma,
-	.init_dma_desc = isc_hw_init_dma_desc,
-	.interrupt = isc_interrupt,
-	.hw_enable_interrupt = isc_hw_enable_interrupt,
-	.hw_set_clock = isc_hw_set_clock,
+static struct at91_camera_caps sama5d2_caps = {
+	.hw_ops = {
+		.hw_initialize = isc_hw_initialize,
+		.hw_uninitialize = isc_hw_uninitialize,
+		.hw_configure = isc_configure_geometry,
+		.start_dma = isc_start_dma,
+		.init_dma_desc = isc_hw_init_dma_desc,
+		.interrupt = isc_interrupt,
+		.hw_enable_interrupt = isc_hw_enable_interrupt,
+		.hw_set_clock = isc_hw_set_clock,
+	},
+
+	.yuv_support_formats = {
+		/* use default pass through */
+		{ /* terminator */ },
+	},
 };
 
 static const struct dev_pm_ops atmel_isi_dev_pm_ops = {
@@ -1410,8 +1431,8 @@ static const struct dev_pm_ops atmel_isi_dev_pm_ops = {
 };
 
 static const struct of_device_id atmel_isi_of_match[] = {
-	{ .compatible = "atmel,at91sam9g45-isi", .data = &at91sam9g45_ops },
-	{ .compatible = "atmel,sama5d2-isc", .data = &sama5d2_ops},
+	{ .compatible = "atmel,at91sam9g45-isi", .data = &at91sam9g45_caps},
+	{ .compatible = "atmel,sama5d2-isc", .data = &sama5d2_caps},
 	{ }
 };
 MODULE_DEVICE_TABLE(of, atmel_isi_of_match);
