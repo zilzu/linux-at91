@@ -137,6 +137,7 @@ struct at91_camera_hw_ops {
 			      u32 next_fbd_addr);
 	void (*hw_enable_interrupt)(struct atmel_isi *isi, int type);
 	void (*hw_set_clock)(struct atmel_isi *isi, bool enable_clk);
+	bool (*host_fmt_supported)(const u32 pixformat);
 };
 
 struct at91_camera_caps {
@@ -229,8 +230,7 @@ static void configure_geometry(struct atmel_isi *isi, u32 width,
 	return;
 }
 
-static bool is_supported(struct soc_camera_device *icd,
-		const u32 pixformat)
+static bool isi_fmt_supported(const u32 pixformat)
 {
 	switch (pixformat) {
 	/* YUV, including grey */
@@ -791,6 +791,23 @@ static void isc_enable_clock(struct atmel_isi *isc)
 	pm_runtime_put(isc->soc_host.v4l2_dev.dev);
 }
 
+static bool isc_fmt_supported(const u32 pixformat)
+{
+	switch (pixformat) {
+	/* YUV, including grey */
+	case V4L2_PIX_FMT_GREY:
+	case V4L2_PIX_FMT_YUYV:
+	case V4L2_PIX_FMT_UYVY:
+	case V4L2_PIX_FMT_YVYU:
+	case V4L2_PIX_FMT_VYUY:
+	/* Bayer RGB */
+	case V4L2_PIX_FMT_SBGGR8:
+		return true;
+	default:
+		return false;
+	}
+}
+
 /* ------------------------------------------------------------------
 	SOC camera operations for the device
    ------------------------------------------------------------------*/
@@ -815,6 +832,8 @@ static int try_or_set_fmt(struct soc_camera_device *icd,
 		   struct v4l2_format *f,
 		   struct v4l2_subdev_format *format)
 {
+	struct soc_camera_host *ici = to_soc_camera_host(icd->parent);
+	struct atmel_isi *isi = ici->priv;
 	struct v4l2_pix_format *pix = &f->fmt.pix;
 	const struct soc_camera_format_xlate *xlate;
 	struct v4l2_subdev_pad_config pad_cfg;
@@ -824,7 +843,7 @@ static int try_or_set_fmt(struct soc_camera_device *icd,
 	int ret;
 
 	/* check with atmel-isi support format, if not support use YUYV */
-	if (!is_supported(icd, pix->pixelformat))
+	if (!(*isi->hw_ops->host_fmt_supported)(pix->pixelformat))
 		pix->pixelformat = V4L2_PIX_FMT_YUYV;
 
 	xlate = soc_camera_xlate_by_fourcc(icd, pix->pixelformat);
@@ -1384,6 +1403,7 @@ static struct at91_camera_caps at91sam9g45_caps = {
 		.interrupt = isi_interrupt,
 		.init_dma_desc = isi_hw_init_dma_desc,
 		.hw_enable_interrupt = isi_hw_enable_interrupt,
+		.host_fmt_supported = isi_fmt_supported,
 	},
 
 	.yuv_support_formats = {
@@ -1416,6 +1436,7 @@ static struct at91_camera_caps sama5d2_caps = {
 		.init_dma_desc = isc_hw_init_dma_desc,
 		.interrupt = isc_interrupt,
 		.hw_enable_interrupt = isc_hw_enable_interrupt,
+		.host_fmt_supported = isc_fmt_supported,
 		.hw_set_clock = isc_hw_set_clock,
 	},
 
