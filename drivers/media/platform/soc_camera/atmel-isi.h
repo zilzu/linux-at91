@@ -66,6 +66,8 @@
 
 /* Bitfields in CFG2 */
 #define ISI_CFG2_GRAYSCALE			(1 << 13)
+#define ISI_CFG2_COL_SPACE_YCbCr		(0 << 15)
+#define ISI_CFG2_COL_SPACE_RGB			(1 << 15)
 /* Constants for YCC_SWAP(ISI_V2) */
 #define		ISI_CFG2_YCC_SWAP_DEFAULT	(0 << 28)
 #define		ISI_CFG2_YCC_SWAP_MODE_1	(1 << 28)
@@ -76,6 +78,16 @@
 #define ISI_CFG2_IM_HSIZE_OFFSET		16
 #define ISI_CFG2_IM_VSIZE_MASK		(0x7FF << ISI_CFG2_IM_VSIZE_OFFSET)
 #define ISI_CFG2_IM_HSIZE_MASK		(0x7FF << ISI_CFG2_IM_HSIZE_OFFSET)
+
+/* Bitfields in PSIZE */
+#define ISI_PSIZE_PREV_VSIZE_OFFSET	0
+#define ISI_PSIZE_PREV_HSIZE_OFFSET	16
+#define ISI_PSIZE_PREV_VSIZE_MASK	(0x3FF << ISI_PSIZE_PREV_VSIZE_OFFSET)
+#define ISI_PSIZE_PREV_HSIZE_MASK	(0x3FF << ISI_PSIZE_PREV_HSIZE_OFFSET)
+
+/* Bitfields in PDECF */
+#define ISI_PDECF_DEC_FACTOR_MASK	(0xFF << 0)
+#define	ISI_PDECF_NO_SAMPLING		(16)
 
 /* Bitfields in CTRL */
 /* Also using in SR(ISI_V2) */
@@ -114,7 +126,6 @@ struct v4l2_async_subdev;
 
 struct isi_platform_data {
 	u8 has_emb_sync;
-	u8 emb_crc_sync;
 	u8 hsync_act_low;
 	u8 vsync_act_low;
 	u8 pclk_act_falling;
@@ -122,10 +133,6 @@ struct isi_platform_data {
 	u32 data_width_flags;
 	/* Using for ISI_CFG1 */
 	u32 frate;
-	/* Using for ISI_MCK */
-	u32 mck_hz;
-	struct v4l2_async_subdev **asd;	/* Flat array, arranged in groups */
-	int *asd_sizes;		/* 0-terminated array of asd group sizes */
 };
 
 #endif /* __ATMEL_ISI_H__ */

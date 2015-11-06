@@ -899,13 +899,14 @@ static int ov7670_set_hw(struct v4l2_subdev *sd, int hstart, int hstop,
 }
 
 
-static int ov7670_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned index,
-					u32 *code)
+static int ov7670_enum_mbus_code(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (index >= N_OV7670_FMTS)
+	if (code->pad || code->index >= N_OV7670_FMTS)
 		return -EINVAL;
 
-	*code = ov7670_formats[index].mbus_code;
+	code->code = ov7670_formats[code->index].mbus_code;
 	return 0;
 }
 
@@ -970,17 +971,12 @@ static int ov7670_try_fmt_internal(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int ov7670_try_mbus_fmt(struct v4l2_subdev *sd,
-			    struct v4l2_mbus_framefmt *fmt)
-{
-	return ov7670_try_fmt_internal(sd, fmt, NULL, NULL);
-}
-
 /*
  * Set a format.
  */
-static int ov7670_s_mbus_fmt(struct v4l2_subdev *sd,
-			  struct v4l2_mbus_framefmt *fmt)
+static int ov7670_set_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
 	struct ov7670_format_struct *ovfmt;
 	struct ov7670_win_size *wsize;
@@ -988,7 +984,18 @@ static int ov7670_s_mbus_fmt(struct v4l2_subdev *sd,
 	unsigned char com7;
 	int ret;
 
-	ret = ov7670_try_fmt_internal(sd, fmt, &ovfmt, &wsize);
+	if (format->pad)
+		return -EINVAL;
+
+	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
+		ret = ov7670_try_fmt_internal(sd, &format->format, NULL, NULL);
+		if (ret)
+			return ret;
+		cfg->try_fmt = format->format;
+		return 0;
+	}
+
+	ret = ov7670_try_fmt_internal(sd, &format->format, &ovfmt, &wsize);
 
 	if (ret)
 		return ret;
@@ -1485,9 +1492,6 @@ static const struct v4l2_subdev_core_ops ov7670_core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops ov7670_video_ops = {
-	.enum_mbus_fmt = ov7670_enum_mbus_fmt,
-	.try_mbus_fmt = ov7670_try_mbus_fmt,
-	.s_mbus_fmt = ov7670_s_mbus_fmt,
 	.s_parm = ov7670_s_parm,
 	.g_parm = ov7670_g_parm,
 };
@@ -1495,6 +1499,8 @@ static const struct v4l2_subdev_video_ops ov7670_video_ops = {
 static const struct v4l2_subdev_pad_ops ov7670_pad_ops = {
 	.enum_frame_interval = ov7670_enum_frame_interval,
 	.enum_frame_size = ov7670_enum_frame_size,
+	.enum_mbus_code = ov7670_enum_mbus_code,
+	.set_fmt = ov7670_set_fmt,
 };
 
 static const struct v4l2_subdev_ops ov7670_ops = {
