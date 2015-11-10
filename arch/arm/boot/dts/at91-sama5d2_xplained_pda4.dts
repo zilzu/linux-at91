@@ -259,6 +259,11 @@
 				pinctrl-0 = <&pinctrl_i2s0_default>;
 			};
 
+			can0: can@f8054000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_can0_default>;
+			};
+
 			uart3: serial@fc008000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_uart3_default>;
@@ -299,6 +304,18 @@
 			};
 
 			pinctrl@fc038000 {
+				pinctrl_can0_default: can0_default {
+					pinmux = <PIN_PC10__CANTX0>,
+						 <PIN_PC11__CANRX0>;
+					bias-disable;
+				};
+
+				pinctrl_can1_default: can1_default {
+					pinmux = <PIN_PC26__CANTX1>,
+						 <PIN_PC27__CANRX1>;
+					bias-disable;
+				};
+
 				pinctrl_classd_default: classd_default {
 					pinmux = <PIN_PB1__CLASSD_R0>,
 						 <PIN_PB2__CLASSD_R1>,
@@ -468,6 +485,11 @@
 				atmel,pwm-type = "diff";
 				atmel,non-overlap-time = <10>;
 				status = "okay";
+			};
+
+			can1: can@fc050000 {
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_can1_default>;
 			};
 		};
 	};
