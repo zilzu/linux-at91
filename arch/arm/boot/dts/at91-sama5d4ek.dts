@@ -99,6 +99,18 @@
 				};
 			};
 
+			isi: isi@f0008000 {
+				status = "okay";
+				port {
+					isi_0: endpoint@0 {
+						remote-endpoint = <&ov2640_0>;
+						bus-width = <8>;
+						vsync-active = <1>;
+						hsync-active = <1>;
+					};
+				};
+			};
+
 			adc0: adc@fc034000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <
@@ -159,6 +171,26 @@
 					wakeup-source;
 				};
 
+				ov2640: camera@30 {
+					compatible = "ovti,ov2640";
+					reg = <0x30>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_pck1_as_isi_mck &pinctrl_sensor_power &pinctrl_sensor_reset>;
+					resetb-gpios = <&pioB 11 GPIO_ACTIVE_LOW>;
+					pwdn-gpios = <&pioB 5 GPIO_ACTIVE_HIGH>;
+					clocks = <&pck1>;
+					clock-names = "xvclk";
+					assigned-clocks = <&pck1>;
+					assigned-clock-rates = <25000000>;
+
+					port {
+						ov2640_0: endpoint {
+							remote-endpoint = <&isi_0>;
+							bus-width = <8>;
+						};
+					};
+				};
+
 				atmel_mxt_ts@4c {
 					compatible = "atmel,atmel_mxt_ts";
 					reg = <0x4c>;
@@ -186,7 +218,7 @@
 			};
 
 			usart2: serial@fc008000 {
-				status = "okay";
+				status = "disabled"; /* confict with ISI pins & sensor power pin */
 			};
 
 			usart3: serial@fc00c000 {
