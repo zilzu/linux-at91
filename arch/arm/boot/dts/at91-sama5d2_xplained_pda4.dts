@@ -125,13 +125,13 @@
 				status = "okay";
 
 				port {
-					isc_0: endpoint@1 {
+					isc_0: endpoint@0 {
 						remote-endpoint = <&ov7740_0>;
 						bus-width = <8>;
 						vsync-active = <0>;
 					};
 
-					isc_1: endpoint@0 {
+					isc_1: endpoint@1 {
 						remote-endpoint = <&ov2640_0>;
 						bus-width = <8>;
 						vsync-active = <0>;
