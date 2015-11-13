@@ -1,8 +1,8 @@
 /*
- * sama5d3dm.dtsi - Device Tree file for SAMA5 display module
+ * sama5d3xdm_pda4.dtsi - Device Tree file for SAMA5 display module
  *
- *  Copyright (C) 2013 Atmel,
- *                2013 Ludovic Desroches <ludovic.desroches@atmel.com>
+ *  Copyright (C) 2014 Atmel,
+ *                2014 Ludovic Desroches <ludovic.desroches@atmel.com>
  *
  * Licensed under GPLv2 or later.
  */
@@ -15,10 +15,19 @@
 					compatible = "qt1070";
 					reg = <0x1b>;
 					interrupt-parent = <&pioE>;
-					interrupts = <31 0x0>;
+					interrupts = <30 0x0>;
 					pinctrl-names = "default";
 					pinctrl-0 = <&pinctrl_qt1070_irq>;
 					wakeup-source;
+				};
+
+				atmel_mxt_ts@4a {
+					compatible = "atmel,atmel_mxt_ts";
+					reg = <0x4a>;
+					interrupt-parent = <&pioE>;
+					interrupts = <31 0x0>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_mxt_ts>;
 				};
 			};
 
@@ -38,15 +47,14 @@
 				};
 			};
 
-			adc0: adc@f8018000 {
-				atmel,adc-ts-wires = <4>;
-				atmel,adc-ts-pressure-threshold = <10000>;
-				status = "okay";
-			};
-
 			pinctrl@fffff200 {
 				board {
 					pinctrl_qt1070_irq: qt1070_irq {
+						atmel,pins =
+							<AT91_PIOE 30 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>; /* PE30 GPIO with pull up deglith */
+					};
+
+					pinctrl_mxt_ts: mxt_irq {
 						atmel,pins =
 							<AT91_PIOE 31 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>; /* PE31 GPIO with pull up deglith */
 					};
@@ -73,7 +81,7 @@
 	};
 
 	panel: panel {
-		compatible = "foxlink,fl500wvr00-a0t", "simple-panel";
+		compatible = "innolux,at043tn24", "simple-panel";
 		backlight = <&backlight>;
 		power-supply = <&panel_reg>;
 		#address-cells = <1>;
@@ -81,6 +89,7 @@
 		status = "okay";
 
 		port@0 {
+			reg = <0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 
