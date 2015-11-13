@@ -203,6 +203,10 @@
 
 			pinctrl@fc06a000 {
 				board {
+					pinctrl_key_gpio: key_gpio_0 {
+						atmel,pins =
+							<AT91_PIOE 13 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>; /* PE13 gpio */
+					};
 					pinctrl_mmc0_cd: mmc0_cd {
 						atmel,pins =
 							<AT91_PIOE 5 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>;
@@ -211,25 +215,21 @@
 						atmel,pins =
 							<AT91_PIOE 6 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>;
 					};
+					pinctrl_mxt_ts: mxt_irq {
+						atmel,pins =
+							<AT91_PIOE 24 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>;
+					};
 					pinctrl_pck2_as_audio_mck: pck2_as_audio_mck {
 						atmel,pins =
 							<AT91_PIOB 10 AT91_PERIPH_B AT91_PINCTRL_NONE>;
-					};
-					pinctrl_usba_vbus: usba_vbus {
-						atmel,pins =
-							<AT91_PIOE 31 AT91_PERIPH_GPIO AT91_PINCTRL_DEGLITCH>;
-					};
-					pinctrl_key_gpio: key_gpio_0 {
-						atmel,pins =
-							<AT91_PIOE 13 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>; /* PE13 gpio */
 					};
 					pinctrl_qt1070_irq: qt1070_irq {
 						atmel,pins =
 							<AT91_PIOE 25 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>;
 					};
-					pinctrl_mxt_ts: mxt_irq {
+					pinctrl_usba_vbus: usba_vbus {
 						atmel,pins =
-							<AT91_PIOE 24 AT91_PERIPH_GPIO AT91_PINCTRL_PULL_UP_DEGLITCH>;
+							<AT91_PIOE 31 AT91_PERIPH_GPIO AT91_PINCTRL_DEGLITCH>;
 					};
 				};
 			};
