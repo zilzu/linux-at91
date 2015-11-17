@@ -107,6 +107,7 @@
 			pinctrl-names = "default";
 			pinctrl-0 = <&pinctrl_sdmmc0_default>;
 			non-removable;
+			mmc-ddr-1_8v;
 			status = "okay";
 		};
 
@@ -236,6 +237,7 @@
 							regulator-name = "VDD_SDHC_1V8";
 							regulator-min-microvolt = <1800000>;
 							regulator-max-microvolt = <1800000>;
+							regulator-always-on;
 						};
 					};
 				};
