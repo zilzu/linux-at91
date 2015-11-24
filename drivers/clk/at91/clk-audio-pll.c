@@ -9,8 +9,6 @@
  * (at your option) any later version.
  *
  */
-#define DEBUG 12
-
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
 #include <linux/clk/at91_pmc.h>
