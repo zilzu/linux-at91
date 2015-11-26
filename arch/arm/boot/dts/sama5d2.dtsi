@@ -1256,6 +1256,8 @@
 				dma-names = "tx";
 				clocks = <&classd_clk>, <&classd_gclk>, <&audio_pll_pmc>;
 				clock-names = "pclk", "gclk", "aclk";
+				assigned-clocks = <&classd_gclk>;
+				assigned-clock-parents = <&audio_pll_pmc>;
 				status = "disabled";
 			};
 
