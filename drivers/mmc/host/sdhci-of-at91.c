@@ -17,10 +17,13 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/kernel.h>
 #include <linux/mmc/host.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/pm.h>
+#include <linux/pm_runtime.h>
 
 #include "sdhci-pltfm.h"
 
@@ -51,30 +54,26 @@ static const struct of_device_id sdhci_at91_dt_match[] = {
 	{}
 };
 
-#ifdef CONFIG_PM_SLEEP
-static int sdhci_at91_suspend(struct device *dev)
+#ifdef CONFIG_PM
+static int sdhci_at91_runtime_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_at91_priv *priv = pltfm_host->priv;
 	int ret;
 
-	ret = sdhci_suspend_host(host);
-	if (ret)
-		return ret;
+	ret = sdhci_runtime_suspend_host(host);
 
 	clk_disable_unprepare(priv->gck);
 	clk_disable_unprepare(priv->hclock);
 	clk_disable_unprepare(priv->mainck);
 
-	return 0;
+	return ret;
 }
 
-static int sdhci_at91_resume(struct device *dev)
+static int sdhci_at91_runtime_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct sdhci_host *host = platform_get_drvdata(pdev);
+	struct sdhci_host *host = dev_get_drvdata(dev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_at91_priv *priv = pltfm_host->priv;
 	int ret;
@@ -97,12 +96,17 @@ static int sdhci_at91_resume(struct device *dev)
 		return ret;
 	}
 
-	return sdhci_resume_host(host);
+	return sdhci_runtime_resume_host(host);
 }
-#endif /* CONFIG_PM_SLEEP */
+#endif /* CONFIG_PM */
 
-static SIMPLE_DEV_PM_OPS(sdhci_at91_dev_pm_ops, sdhci_at91_suspend,
-			 sdhci_at91_resume);
+static const struct dev_pm_ops sdhci_at91_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
+				pm_runtime_force_resume)
+	SET_RUNTIME_PM_OPS(sdhci_at91_runtime_suspend,
+			   sdhci_at91_runtime_resume,
+			   NULL)
+};
 
 static int sdhci_at91_probe(struct platform_device *pdev)
 {
@@ -115,6 +119,7 @@ static int sdhci_at91_probe(struct platform_device *pdev)
 	unsigned int			clk_base, clk_mul;
 	unsigned int			gck_rate, real_gck_rate;
 	int				ret;
+	unsigned int 			preset_div, preset_common = 0x400; /* drv type B, programmable clock mode */
 
 	match = of_match_device(sdhci_at91_dt_match, &pdev->dev);
 	if (!match)
@@ -185,6 +190,28 @@ static int sdhci_at91_probe(struct platform_device *pdev)
 			 clk_mul, real_gck_rate);
 	}
 
+	/*
+	 * We have to set preset values because it depends on the clk_mul
+	 * value. Moreover, SDR104 is supported in a degraded mode since the
+	 * maximum sd clock value is 120 MHz instead of 208 MHz. For that
+	 * reason, we need to use presets to support SDR104.
+	 */
+	preset_div = DIV_ROUND_UP(real_gck_rate, 24000000) - 1;
+	writew(preset_common | preset_div,
+	       host->ioaddr + SDHCI_PRESET_FOR_SDR12);
+	preset_div = DIV_ROUND_UP(real_gck_rate, 50000000) - 1;
+	writew(preset_common | preset_div,
+	       host->ioaddr + SDHCI_PRESET_FOR_SDR25);
+	preset_div = DIV_ROUND_UP(real_gck_rate, 100000000) - 1;
+	writew(preset_common | preset_div,
+	       host->ioaddr + SDHCI_PRESET_FOR_SDR50);
+	preset_div = DIV_ROUND_UP(real_gck_rate, 120000000) - 1;
+	writew(preset_common | preset_div,
+	       host->ioaddr + SDHCI_PRESET_FOR_SDR104);
+	preset_div = DIV_ROUND_UP(real_gck_rate, 50000000) - 1;
+	writew(preset_common | preset_div,
+	       host->ioaddr + SDHCI_PRESET_FOR_DDR50);
+
 	clk_prepare_enable(priv->mainck);
 	clk_prepare_enable(priv->gck);
 
@@ -197,12 +224,23 @@ static int sdhci_at91_probe(struct platform_device *pdev)
 
 	sdhci_get_of_property(pdev);
 
+	pm_runtime_get_noresume(&pdev->dev);
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
+	pm_runtime_use_autosuspend(&pdev->dev);
+
 	ret = sdhci_add_host(host);
 	if (ret)
-		goto clocks_disable_unprepare;
+		goto pm_runtime_disable;
+
+	pm_runtime_put_autosuspend(&pdev->dev);
 
 	return 0;
 
+pm_runtime_disable:
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 clocks_disable_unprepare:
 	clk_disable_unprepare(priv->gck);
 	clk_disable_unprepare(priv->mainck);
@@ -217,6 +255,10 @@ static int sdhci_at91_remove(struct platform_device *pdev)
 	struct sdhci_host	*host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host	*pltfm_host = sdhci_priv(host);
 	struct sdhci_at91_priv	*priv = pltfm_host->priv;
+
+	pm_runtime_get_sync(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_put_noidle(&pdev->dev);
 
 	sdhci_pltfm_unregister(pdev);
 
