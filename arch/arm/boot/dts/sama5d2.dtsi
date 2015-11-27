@@ -883,7 +883,7 @@
 				dma-names = "tx";
 				clocks = <&sha_clk>;
 				clock-names = "sha_clk";
-				status = "okay";
+				status = "disabled";
 			};
 
 			aes@f002c000 {
