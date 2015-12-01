@@ -1060,14 +1060,27 @@ static int macronix_set_dual_mode(struct spi_nor *nor)
 
 static int macronix_set_single_mode(struct spi_nor *nor)
 {
+	u8 read_dummy;
+
 	/*
 	 * Configure 8 dummy cycles for Fast Read 1-1-1 (0x0b) command (up to
 	 * 133MHz for STR and 66MHz for DTR). The Read 1-1-1 (0x03) command
-	 * doesn't care about this setting.
+	 * expects no dummy cycle.
 	 * read_opcode should not be overridden here!
 	 */
+	switch (nor->read_opcode) {
+	case SPINOR_OP_READ:
+	case SPINOR_OP_READ4:
+		read_dummy = 0;
+		break;
+
+	default:
+		read_dummy = 8;
+		break;
+	}
+
 	nor->read_proto = SPI_PROTO_1_1_1;
-	return macronix_set_dummy_cycles(nor, 8);
+	return macronix_set_dummy_cycles(nor, read_dummy);
 }
 
 static inline int spansion_get_config(struct spi_nor *nor,
@@ -1503,6 +1516,7 @@ static int micron_set_dual_mode(struct spi_nor *nor)
 
 static int micron_set_single_mode(struct spi_nor *nor)
 {
+	u8 read_dummy;
 	int ret;
 
 	/*
@@ -1520,8 +1534,19 @@ static int micron_set_single_mode(struct spi_nor *nor)
 	 * We can change these settings safely as we write into a volatile
 	 * register.
 	 */
+	switch (nor->read_opcode) {
+	case SPINOR_OP_READ:
+	case SPINOR_OP_READ4:
+		read_dummy = 0;
+		break;
+
+	default:
+		read_dummy = 8;
+		break;
+	}
+
 	nor->read_proto = SPI_PROTO_1_1_1;
-	return micron_set_dummy_cycles(nor, 8);
+	return micron_set_dummy_cycles(nor, read_dummy);
 }
 
 static int set_quad_mode(struct spi_nor *nor, struct flash_info *info)
