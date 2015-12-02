@@ -822,7 +822,9 @@ static int atmel_qspi_probe(struct platform_device *pdev)
 	if (err)
 		goto release_channel;
 
+	nor->dev->of_node = child;
 	err = spi_nor_scan(nor, NULL, SPI_NOR_QUAD);
+	nor->dev->of_node = np;
 	if (err)
 		goto release_channel;
 
