@@ -297,12 +297,23 @@ static const struct iio_info at91_adc_info = {
 	.driver_module = THIS_MODULE,
 };
 
+static const struct of_device_id at91_adc_dt_match[] = {
+	{
+		.compatible = "atmel,sama5d2-adc",
+		.data = &at91_adc_sama5d2_soc_info
+	}, {
+		/* sentinel */
+	}
+};
+MODULE_DEVICE_TABLE(of, at91_adc_dt_match);
+
 static int at91_adc_probe(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev;
 	struct at91_adc_state *st;
 	struct resource	*res;
 	int ret;
+	const struct of_device_id *match;
 
 	indio_dev = devm_iio_device_alloc(&pdev->dev,
 					  sizeof(struct at91_adc_state));
@@ -317,8 +328,15 @@ static int at91_adc_probe(struct platform_device *pdev)
 	indio_dev->num_channels = ARRAY_SIZE(at91_adc_channels);
 
 	st = iio_priv(indio_dev);
+	/*
 	st->soc_info = (struct at91_adc_soc_info *)
 			of_device_get_match_data(&pdev->dev);
+	*/
+	match = of_match_node(at91_adc_dt_match, pdev->dev.of_node);
+	if (!match)
+		return -ENODEV;
+	st->soc_info = (struct at91_adc_soc_info *)match->data;
+
 	init_waitqueue_head(&st->wq_data_available);
 	mutex_init(&st->lock);
 
@@ -391,16 +409,6 @@ static int at91_adc_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-static const struct of_device_id at91_adc_dt_match[] = {
-	{
-		.compatible = "atmel,sama5d2-adc",
-		.data = &at91_adc_sama5d2_soc_info
-	}, {
-		/* sentinel */
-	}
-};
-MODULE_DEVICE_TABLE(of, at91_adc_dt_match);
 
 static struct platform_driver at91_adc_driver = {
 	.probe = at91_adc_probe,
