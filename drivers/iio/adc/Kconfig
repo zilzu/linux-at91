@@ -127,6 +127,13 @@ config AT91_ADC
 	help
 	  Say yes here to build support for Atmel AT91 ADC.
 
+config AT91_SAMA5D2_ADC
+	tristate "Atmel AT91 SAMA5D2 ADC"
+	depends on ARCH_AT91
+	depends on INPUT
+	help
+	  Say yes here to build support for a Atmel SAMA5D2 ADC.
+
 config AXP288_ADC
 	tristate "X-Powers AXP288 ADC driver"
 	depends on MFD_AXP20X
