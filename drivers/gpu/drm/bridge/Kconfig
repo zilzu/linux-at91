@@ -22,3 +22,11 @@ config DRM_PS8622
 	select BACKLIGHT_CLASS_DEVICE
 	---help---
 	  parade eDP-LVDS bridge chip driver.
+
+config DRM_SIL902X
+	tristate "Silicon Image sil902x RGB/HDMI bridge"
+	depends on OF
+	select DRM_KMS_HELPER
+	select REGMAP_I2C
+	---help---
+	  Silicon Image sil902x bridge chip driver.
