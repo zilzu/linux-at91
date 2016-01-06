@@ -716,8 +716,26 @@ static int atmel_hlcdc_plane_prepare_fb(struct drm_plane *p,
 					const struct drm_plane_state *new_state)
 {
 	struct atmel_hlcdc_plane *plane = drm_plane_to_atmel_hlcdc_plane(p);
+	int ret;
 
-	return atmel_hlcdc_layer_update_start(&plane->layer);
+	ret = atmel_hlcdc_layer_update_start(&plane->layer);
+	if (!ret)
+		plane->prepared = true;
+
+	return ret;
+}
+
+static void atmel_hlcdc_plane_cleanup_fb(struct drm_plane *p,
+				struct drm_framebuffer *fb,
+				const struct drm_plane_state *old_state)
+{
+	struct atmel_hlcdc_plane *plane = drm_plane_to_atmel_hlcdc_plane(p);
+
+	if (!plane->prepared)
+		return;
+
+	atmel_hlcdc_layer_update_rollback(&plane->layer);
+	plane->prepared = false;
 }
 
 static void atmel_hlcdc_plane_atomic_update(struct drm_plane *p,
@@ -737,6 +755,7 @@ static void atmel_hlcdc_plane_atomic_update(struct drm_plane *p,
 	atmel_hlcdc_plane_update_disc_area(plane, state);
 
 	atmel_hlcdc_layer_update_commit(&plane->layer);
+	plane->prepared = false;
 }
 
 static void atmel_hlcdc_plane_atomic_disable(struct drm_plane *p,
@@ -842,6 +861,7 @@ static void atmel_hlcdc_plane_init_properties(struct atmel_hlcdc_plane *plane,
 
 static struct drm_plane_helper_funcs atmel_hlcdc_layer_plane_helper_funcs = {
 	.prepare_fb = atmel_hlcdc_plane_prepare_fb,
+	.cleanup_fb = atmel_hlcdc_plane_cleanup_fb,
 	.atomic_check = atmel_hlcdc_plane_atomic_check,
 	.atomic_update = atmel_hlcdc_plane_atomic_update,
 	.atomic_disable = atmel_hlcdc_plane_atomic_disable,
