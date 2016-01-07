@@ -74,3 +74,12 @@ config SND_ATMEL_SOC_I2S
 	  Say Y or M if you want to add support for codecs attached to
 	  the Atmel I2S interface. You will also need
 	  to select the audio interfaces to support below.
+
+config SND_ATMEL_SOC_PDMIC
+	tristate "Atmel ASoC driver for boards using PDMIC"
+	depends on OF && (ARCH_AT91 || COMPILE_TEST)
+	select SND_SOC_GENERIC_DMAENGINE_PCM
+	select REGMAP_MMIO
+	help
+	  Say Y if you want to add support for Atmel ASoC driver for boards using
+	  PDMIC.
