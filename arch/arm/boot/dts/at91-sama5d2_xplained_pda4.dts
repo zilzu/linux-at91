@@ -123,16 +123,16 @@
 			isc: isc@f0008000 {
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_isc_base &pinctrl_isc_data_8bit &pinctrl_isc_data_9_10 &pinctrl_isc_data_11_12>;
-				status = "okay";
+				status = "disabled";
 
 				port {
-					isc_0: endpoint@1 {
+					isc_0: endpoint@0 {
 						remote-endpoint = <&ov7740_0>;
 						bus-width = <8>;
 						vsync-active = <0>;
 					};
 
-					isc_1: endpoint@0 {
+					isc_1: endpoint@1 {
 						remote-endpoint = <&ov2640_0>;
 						bus-width = <8>;
 						vsync-active = <0>;
