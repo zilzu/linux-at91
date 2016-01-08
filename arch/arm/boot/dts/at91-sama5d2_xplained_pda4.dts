@@ -1,8 +1,9 @@
 /*
- * at91-sama5d2_xplained.dts - Device Tree file for SAMA5D2 Xplained board
+ * at91-sama5d2_xplained_pda4.dts - Device Tree file for SAMA5D2 Xplained board
  *
- *  Copyright (C) 2015 Atmel,
- *                2015 Nicolas Ferre <nicolas.ferre@atmel.com>
+ *  Copyright (C) 2016 Atmel,
+ *                2016 Nicolas Ferre <nicolas.ferre@atmel.com>
+ *                2016 Ludovic Desroches <ludovic.desroches@atmel.com>
  *
  * This file is dual-licensed: you can use it either under the terms
  * of the GPL or the X11 license, at your option. Note that this dual
@@ -43,517 +44,106 @@
  *     OTHER DEALINGS IN THE SOFTWARE.
  */
 /dts-v1/;
-#include "sama5d2.dtsi"
-#include "sama5d2-pinfunc.h"
-#include <dt-bindings/mfd/atmel-flexcom.h>
-#include <dt-bindings/gpio/gpio.h>
-#include "at91-sama5d2_xplained_dm_pda4.dtsi"
+#include "at91-sama5d2_xplained_common.dtsi"
 
 / {
 	model = "Atmel SAMA5D2 Xplained TM43xx";
 	compatible = "atmel,sama5d2-xplained", "atmel,sama5d2", "atmel,sama5";
 
-	chosen {
-		stdout-path = "serial0:115200n8";
-	};
-
-	memory {
-		reg = <0x20000000 0x80000>;
-	};
-
-	clocks {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		ranges;
-
-		main_clock: clock@0 {
-			compatible = "atmel,osc", "fixed-clock";
-			clock-frequency = <12000000>;
-		};
-
-		slow_xtal {
-			clock-frequency = <32768>;
-		};
-
-		main_xtal {
-			clock-frequency = <12000000>;
-		};
-	};
-
 	ahb {
-		usb0: gadget@00300000 {
-			atmel,vbus-gpio = <&pioA 31 GPIO_ACTIVE_HIGH>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_usba_vbus>;
-			status = "okay";
-		};
-
-		usb1: ohci@00400000 {
-			num-ports = <3>;
-			atmel,vbus-gpio = <0 /* &pioA 41 GPIO_ACTIVE_HIGH */
-					   &pioA 42 GPIO_ACTIVE_HIGH
-					   0
-					  >;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_usb_default>;
-			status = "okay";
-		};
-
-		usb2: ehci@00500000 {
-			status = "okay";
-		};
-
-		sdmmc0: sdio-host@a0000000 {
-			bus-width = <8>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_sdmmc0_default>;
-			non-removable;
-			mmc-ddr-1_8v;
-			status = "okay";
-		};
-
-		sdmmc1: sdio-host@b0000000 {
-			bus-width = <4>;
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_sdmmc1_default>;
-			status = "okay"; /* conflict with qspi0 */
-		};
-
 		apb {
-			qspi0: qspi@f0020000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_qspi0_default>;
-				/*status = "okay";*/ /* conflict with sdmmc1 */
-
-				m25p80@0 {
-					compatible = "micron,n25q128a13";
-					reg = <0>;
-					spi-max-frequency = <83000000>;
-					m25p,num-dummy-cycles = <6>;
-				};
-			};
-
-			spi0: spi@f8000000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_spi0_default>;
+			hlcdc: hlcdc@f0000000 {
 				status = "okay";
 
-				m25p80@0 {
-					compatible = "atmel,at25df321a";
-					reg = <0>;
-					spi-max-frequency = <50000000>;
-				};
-			};
-
-			macb0: ethernet@f8008000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_macb0_rmii &pinctrl_macb0_phy_irq>;
-				phy-mode = "rmii";
-				status = "okay";
-
-				ethernet-phy@1 {
-					interrupt-parent = <&pioA>;
-					interrupts = <73 IRQ_TYPE_LEVEL_LOW>;
-					reg = <0x1>;
-				};
-			};
-
-			pdmic@f8018000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_pdmic_default>;
-				atmel,model = "PDMIC @ sama5d2_xplained";
-				atmel,mic-min-freq = <1000000>;
-				atmel,mic-max-freq = <3246000>;
-				atmel,mic-offset = <0x0>;
-				status = "okay";
-			};
-
-			uart1: serial@f8020000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_uart1_default>;
-				status = "okay";
-			};
-
-			i2c0: i2c@f8028000 {
-				dmas = <0>, <0>;
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_i2c0_default>;
-				atmel,twd-hold-cycles = <25>;
-				status = "okay";
-
-				pmic: act8865@5b {
-					compatible = "active-semi,act8865";
-					reg = <0x5b>;
-					active-semi,vsel-high;
-					status = "okay";
-
-					regulators {
-						vdd_1v35_reg: DCDC_REG1 {
-							regulator-name = "VDD_1V35";
-							regulator-min-microvolt = <1350000>;
-							regulator-max-microvolt = <1350000>;
-							regulator-always-on;
-						};
-
-						vdd_1v2_reg: DCDC_REG2 {
-							regulator-name = "VDD_1V2";
-							regulator-min-microvolt = <1100000>;
-							regulator-max-microvolt = <1300000>;
-							regulator-always-on;
-						};
-
-						vdd_3v3_reg: DCDC_REG3 {
-							regulator-name = "VDD_3V3";
-							regulator-min-microvolt = <3300000>;
-							regulator-max-microvolt = <3300000>;
-							regulator-always-on;
-						};
-
-						vdd_fuse_reg: LDO_REG1 {
-							regulator-name = "VDD_FUSE";
-							regulator-min-microvolt = <2500000>;
-							regulator-max-microvolt = <2500000>;
-							regulator-always-on;
-						};
-
-						vdd_3v3_lp_reg: LDO_REG2 {
-							regulator-name = "VDD_3V3_LP";
-							regulator-min-microvolt = <3300000>;
-							regulator-max-microvolt = <3300000>;
-							regulator-always-on;
-						};
-
-						vdd_led_reg: LDO_REG3 {
-							regulator-name = "VDD_LED";
-							regulator-min-microvolt = <3300000>;
-							regulator-max-microvolt = <3300000>;
-							regulator-always-on;
-						};
-
-						vdd_sdhc_1v8_reg: LDO_REG4 {
-							regulator-name = "VDD_SDHC_1V8";
-							regulator-min-microvolt = <1800000>;
-							regulator-max-microvolt = <1800000>;
-							regulator-always-on;
+				hlcdc-display-controller {
+					port@0 {
+						hlcdc_panel_output: endpoint@0 {
+							reg = <0>;
+							remote-endpoint = <&panel_input>;
 						};
 					};
-				};
-			};
-
-			flx0: flexcom@f8034000 {
-				atmel,flexcom-mode = <ATMEL_FLEXCOM_MODE_USART>;
-				status = "disabled";	/* conflict with ISC_D2 & ISC_D3 data pins */
-
-				uart5: serial@200 {
-					compatible = "atmel,at91sam9260-usart";
-					reg = <0x200 0x200>;
-					interrupts = <19 IRQ_TYPE_LEVEL_HIGH 7>;
-					clocks = <&flx0_clk>;
-					clock-names = "usart";
-					pinctrl-names = "default";
-					pinctrl-0 = <&pinctrl_flx0_default>;
-					atmel,fifo-size = <32>;
-					status = "okay";
-				};
-			};
-
-			shdwc@f8048010 {
-				atmel,shdwc-debouncer = <976>;
-
-				input@0 {
-					reg = <0>;
-					atmel,wakeup-type = "low";
-				};
-			};
-
-			watchdog@f8048040 {
-				status = "okay";
-			};
-
-			i2s0: i2s@f8050000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_i2s0_default>;
-			};
-
-			can0: can@f8054000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_can0_default>;
-			};
-
-			uart3: serial@fc008000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_uart3_default>;
-				status = "disabled";	/* conflict with sensor's reset/pwdn pins */
-			};
-
-			flx4: flexcom@fc018000 {
-				atmel,flexcom-mode = <ATMEL_FLEXCOM_MODE_TWI>;
-				status = "okay";
-
-				i2c2: i2c@600 {
-					compatible = "atmel,sama5d2-i2c";
-					reg = <0x600 0x200>;
-					interrupts = <23 IRQ_TYPE_LEVEL_HIGH 7>;
-					dmas = <0>, <0>;
-					dma-names = "tx", "rx";
-					#address-cells = <1>;
-					#size-cells = <0>;
-					clocks = <&flx4_clk>;
-					pinctrl-names = "default";
-					pinctrl-0 = <&pinctrl_flx4_default>;
-					atmel,fifo-size = <16>;
-					status = "okay";
 				};
 			};
 
 			i2c1: i2c@fc028000 {
-				dmas = <0>, <0>;
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_i2c1_default>;
-				status = "okay";
+				qt1070: keyboard@1b {
+					compatible = "qt1070";
+					reg = <0x1b>;
+					interrupt-parent = <&pioA>;
+					interrupts = <40 0x0>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_qt1070_irq>;
+					wakeup-source;
+				};
 
-				at24@54 {
-					compatible = "atmel,24c02";
-					reg = <0x54>;
-					pagesize = <16>;
+				atmel_mxt_ts@4a {
+					compatible = "atmel,atmel_mxt_ts";
+					reg = <0x4a>;
+					interrupt-parent = <&pioA>;
+					interrupts = <39 0x0>;
+					pinctrl-names = "default";
+					pinctrl-0 = <&pinctrl_mxt_irq>;
 				};
 			};
 
 			pinctrl@fc038000 {
-				pinctrl_can0_default: can0_default {
-					pinmux = <PIN_PC10__CANTX0>,
-						 <PIN_PC11__CANRX0>;
-					bias-disable;
-				};
-
-				pinctrl_can1_default: can1_default {
-					pinmux = <PIN_PC26__CANTX1>,
-						 <PIN_PC27__CANRX1>;
-					bias-disable;
-				};
-
-				pinctrl_classd_default: classd_default {
-					pinmux = <PIN_PB1__CLASSD_R0>,
-						 <PIN_PB2__CLASSD_R1>,
-						 <PIN_PB3__CLASSD_R2>,
-						 <PIN_PB4__CLASSD_R3>;
+				pinctrl_mxt_irq: pinctrl_mxt_irq {
+					pinmux = <PIN_PB7__GPIO>;
 					bias-pull-up;
+					input-debounce = <1>;
 				};
 
-				pinctrl_flx0_default: flx0_default {
-					pinmux = <PIN_PB28__FLEXCOM0_IO0>,
-						 <PIN_PB29__FLEXCOM0_IO1>;
-					bias-disable;
-				};
-
-				pinctrl_flx4_default: flx4_default {
-					pinmux = <PIN_PD12__FLEXCOM4_IO0>,
-						 <PIN_PD13__FLEXCOM4_IO1>;
-					bias-disable;
-				};
-
-				pinctrl_i2c0_default: i2c0_default {
-					pinmux = <PIN_PD21__TWD0>,
-						 <PIN_PD22__TWCK0>;
-					bias-disable;
-				};
-
-				pinctrl_i2c1_default: i2c1_default {
-					pinmux = <PIN_PD4__TWD1>,
-						 <PIN_PD5__TWCK1>;
-					bias-disable;
-				};
-
-				pinctrl_i2s0_default: i2s0_default {
-					pinmux = <PIN_PC1__I2SC0_CK>,
-						 <PIN_PC2__I2SC0_MCK>,
-						 <PIN_PC3__I2SC0_WS>,
-						 <PIN_PC4__I2SC0_DI>,
-						 <PIN_PC5__I2SC0_DO>;
-					bias-disable;
-				};
-
-				pinctrl_key_gpio_default: key_gpio_default {
-					pinmux = <PIN_PB9__GPIO>;
+				pinctrl_qt1070_irq: pinctrl_qt1070_irq {
+					pinmux = <PIN_PB8__GPIO>;
 					bias-pull-up;
+					input-debounce = <1>;
 				};
-
-				pinctrl_led_gpio_default: led_gpio_default {
-					pinmux = <PIN_PB0__GPIO>,
-						 <PIN_PB5__GPIO>,
-						 <PIN_PB6__GPIO>;
-					bias-pull-up;
-				};
-
-				pinctrl_macb0_phy_irq: macb0_phy_irq {
-					pinmux = <PIN_PC9__GPIO>;
-				};
-
-				pinctrl_macb0_rmii: macb0_rmii {
-					pinmux = <PIN_PB14__GTXCK>,
-						 <PIN_PB15__GTXEN>,
-						 <PIN_PB16__GRXDV>,
-						 <PIN_PB17__GRXER>,
-						 <PIN_PB18__GRX0>,
-						 <PIN_PB19__GRX1>,
-						 <PIN_PB20__GTX0>,
-						 <PIN_PB21__GTX1>,
-						 <PIN_PB22__GMDC>,
-						 <PIN_PB23__GMDIO>;
-					bias-disable;
-				};
-
-				pinctrl_pdmic_default: pdmic_default {
-					pinmux = <PIN_PB26__PDMIC_DAT>,
-						 <PIN_PB27__PDMIC_CLK>;
-					bias-disable;
-				};
-
-				pinctrl_qspi0_default: qspi0_default {
-					pinmux = <PIN_PA22__QSPI0_SCK>,
-						 <PIN_PA23__QSPI0_CS>,
-						 <PIN_PA24__QSPI0_IO0>,
-						 <PIN_PA25__QSPI0_IO1>,
-						 <PIN_PA26__QSPI0_IO2>,
-						 <PIN_PA27__QSPI0_IO3>;
-				};
-
-				pinctrl_sensor_power: sensor_power {
-					pinmux = <PIN_PB12__GPIO>;
-					bias-disable;
-				};
-
-				pinctrl_sensor_reset: sensor_reset {
-					pinmux = <PIN_PB11__GPIO>;
-					bias-disable;
-				};
-
-				pinctrl_sdmmc0_default: sdmmc0_default {
-					cmd_data {
-						pinmux = <PIN_PA1__SDMMC0_CMD>,
-							 <PIN_PA2__SDMMC0_DAT0>,
-							 <PIN_PA3__SDMMC0_DAT1>,
-							 <PIN_PA4__SDMMC0_DAT2>,
-							 <PIN_PA5__SDMMC0_DAT3>,
-							 <PIN_PA6__SDMMC0_DAT4>,
-							 <PIN_PA7__SDMMC0_DAT5>,
-							 <PIN_PA8__SDMMC0_DAT6>,
-							 <PIN_PA9__SDMMC0_DAT7>;
-						bias-pull-up;
-					};
-
-					ck_cd_rstn_vddsel {
-						pinmux = <PIN_PA0__SDMMC0_CK>,
-							 <PIN_PA10__SDMMC0_RSTN>,
-							 <PIN_PA11__SDMMC0_VDDSEL>,
-							 <PIN_PA13__SDMMC0_CD>;
-						bias-disable;
-					};
-				};
-
-				pinctrl_sdmmc1_default: sdmmc1_default {
-					cmd_data {
-						pinmux = <PIN_PA28__SDMMC1_CMD>,
-							 <PIN_PA18__SDMMC1_DAT0>,
-							 <PIN_PA19__SDMMC1_DAT1>,
-							 <PIN_PA20__SDMMC1_DAT2>,
-							 <PIN_PA21__SDMMC1_DAT3>;
-						bias-pull-up;
-					};
-
-					conf-ck_cd {
-						pinmux = <PIN_PA22__SDMMC1_CK>,
-							 <PIN_PA30__SDMMC1_CD>;
-						bias-disable;
-					};
-				};
-
-				pinctrl_spi0_default: spi0_default {
-					pinmux = <PIN_PA14__SPI0_SPCK>,
-						 <PIN_PA15__SPI0_MOSI>,
-						 <PIN_PA16__SPI0_MISO>,
-						 <PIN_PA17__SPI0_NPCS0>;
-					bias-disable;
-				};
-
-				pinctrl_uart1_default: uart1_default {
-					pinmux = <PIN_PD2__URXD1>,
-						 <PIN_PD3__UTXD1>;
-					bias-disable;
-				};
-
-				pinctrl_uart3_default: uart3_default {
-					pinmux = <PIN_PB11__URXD3>,
-						 <PIN_PB12__UTXD3>;
-					bias-disable;
-				};
-
-				pinctrl_usb_default: usb_default {
-					pinmux = <PIN_PB10__GPIO>;
-					bias-disable;
-				};
-
-				pinctrl_usba_vbus: usba_vbus {
-					pinmux = <PIN_PA31__GPIO>;
-					bias-disable;
-				};
-
-				pinctrl_i2c1_default: i2c1_default {
-					pinmux = <PIN_PD4__TWD1>,
-						 <PIN_PD5__TWCK1>;
-					bias-disable;
-				};
-			};
-
-			classd@fc048000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_classd_default>;
-				atmel,model = "classd @ SAMA5D2-Xplained";
-				atmel,pwm-type = "diff";
-				atmel,non-overlap-time = <10>;
-				status = "okay";
-			};
-
-			can1: can@fc050000 {
-				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_can1_default>;
 			};
 		};
 	};
 
-	gpio_keys {
-		compatible = "gpio-keys";
-
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_key_gpio_default>;
-
-		bp1 {
-			label = "PB_USER";
-			gpios = <&pioA 41 GPIO_ACTIVE_LOW>;
-			linux,code = <0x104>;
-		};
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&hlcdc_pwm 0 50000 0>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <7>;
+		power-supply = <&bl_reg>;
+		status = "okay";
 	};
 
-	leds {
-		compatible = "gpio-leds";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_led_gpio_default>;
+	bl_reg: backlight_regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "backlight-power-supply";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		status = "okay";
+	};
+
+	panel: panel {
+		compatible = "innolux,at043tn24", "simple-panel";
+		backlight = <&backlight>;
+		power-supply = <&panel_reg>;
+		#address-cells = <1>;
+		#size-cells = <0>;
 		status = "okay";
 
-		red {
-			label = "red";
-			gpios = <&pioA 38 GPIO_ACTIVE_LOW>;
-		};
+		port@0 {
+			reg = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 
-		green {
-			label = "green";
-			gpios = <&pioA 37 GPIO_ACTIVE_LOW>;
+			panel_input: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&hlcdc_panel_output>;
+			};
 		};
+	};
 
-		blue {
-			label = "blue";
-			gpios = <&pioA 32 GPIO_ACTIVE_LOW>;
-			linux,default-trigger = "heartbeat";
-		};
+	panel_reg: panel_regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "panel-power-supply";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		status = "okay";
 	};
 };
