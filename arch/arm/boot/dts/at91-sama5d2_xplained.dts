@@ -165,9 +165,15 @@
 
 			macb0: ethernet@f8008000 {
 				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_macb0_rmii>;
+				pinctrl-0 = <&pinctrl_macb0_rmii &pinctrl_macb0_phy_irq>;
 				phy-mode = "rmii";
 				status = "okay";
+
+				ethernet-phy@1 {
+					interrupt-parent = <&pioA>;
+					interrupts = <73 IRQ_TYPE_LEVEL_LOW>;
+					reg = <0x1>;
+				};
 			};
 
 			pdmic@f8018000 {
@@ -484,6 +490,10 @@
 					bias-pull-up;
 				};
 
+				pinctrl_macb0_phy_irq: macb0_phy_irq {
+					pinmux = <PIN_PC9__GPIO>;
+				};
+
 				pinctrl_macb0_rmii: macb0_rmii {
 					pinmux = <PIN_PB14__GTXCK>,
 						 <PIN_PB15__GTXEN>,
@@ -622,6 +632,7 @@
 			label = "PB_USER";
 			gpios = <&pioA 41 GPIO_ACTIVE_LOW>;
 			linux,code = <0x104>;
+			gpio-key,wakeup;
 		};
 	};
 
