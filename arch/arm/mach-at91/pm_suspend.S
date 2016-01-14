@@ -363,7 +363,6 @@ ENTRY(at91_pm_ulp1_mode)
 	bic	tmp1, tmp1, #AT91_PMC_MOSCSEL
 	bic	tmp1, tmp1, #AT91_PMC_KEY_MASK
 	orr	tmp1, tmp1, #AT91_PMC_KEY
-	bic	tmp1, tmp1, #(7 << 4)
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
 	wait_moscsels
@@ -373,7 +372,6 @@ ENTRY(at91_pm_ulp1_mode)
 	bic	tmp1, tmp1, #AT91_PMC_MOSCEN
 	bic	tmp1, tmp1, #AT91_PMC_KEY_MASK
 	orr	tmp1, tmp1, #AT91_PMC_KEY
-	bic	tmp1, tmp1, #(7 << 4)
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
 	/* Enter the ULP1 mode by setting WAITMODE bit in CKGR_MOR */
@@ -381,7 +379,6 @@ ENTRY(at91_pm_ulp1_mode)
 	orr	tmp1, tmp1, #AT91_PMC_WAITMODE
 	bic	tmp1, tmp1, #AT91_PMC_KEY_MASK
 	orr	tmp1, tmp1, #AT91_PMC_KEY
-	bic	tmp1, tmp1, #(7 << 4)
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
 	wait_mckrdy
@@ -391,7 +388,6 @@ ENTRY(at91_pm_ulp1_mode)
 	orr	tmp1, tmp1, #AT91_PMC_MOSCEN
 	bic	tmp1, tmp1, #AT91_PMC_KEY_MASK
 	orr	tmp1, tmp1, #AT91_PMC_KEY
-	bic	tmp1, tmp1, #(7 << 4)
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
 	wait_moscrdy
@@ -401,7 +397,6 @@ ENTRY(at91_pm_ulp1_mode)
 	orr	tmp1, tmp1, #AT91_PMC_MOSCSEL
 	bic	tmp1, tmp1, #AT91_PMC_KEY_MASK
 	orr	tmp1, tmp1, #AT91_PMC_KEY
-	bic	tmp1, tmp1, #(7 << 4)
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
 	wait_moscsels
