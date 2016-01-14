@@ -344,9 +344,8 @@ ENTRY(at91_pm_ulp1_mode)
 	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
 	str	tmp1, .saved_mckr
 
-	/* Switch the master clock source to main clock */
+	/* Switch the master clock source to slow clock */
 	bic	tmp1, tmp1, #AT91_PMC_CSS
-	orr	tmp1, tmp1, #AT91_PMC_CSS_MAIN
 	str	tmp1, [pmc, #AT91_PMC_MCKR]
 
 	wait_mckrdy
@@ -374,6 +373,14 @@ ENTRY(at91_pm_ulp1_mode)
 	orr	tmp1, tmp1, #AT91_PMC_KEY
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
+	/* Switch the master clock source to main clock */
+	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
+	bic	tmp1, tmp1, #AT91_PMC_CSS
+	orr	tmp1, tmp1, #AT91_PMC_CSS_MAIN
+	str	tmp1, [pmc, #AT91_PMC_MCKR]
+
+	wait_mckrdy
+
 	/* Enter the ULP1 mode by setting WAITMODE bit in CKGR_MOR */
 	ldr	tmp1, [pmc, #AT91_CKGR_MOR]
 	orr	tmp1, tmp1, #AT91_PMC_WAITMODE
@@ -392,6 +399,13 @@ ENTRY(at91_pm_ulp1_mode)
 
 	wait_moscrdy
 
+	/* Switch the master clock source to slow clock */
+	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
+	bic	tmp1, tmp1, #AT91_PMC_CSS
+	str	tmp1, [pmc, #AT91_PMC_MCKR]
+
+	wait_mckrdy
+
 	/* Switch main clock source to crystal oscillator */
 	ldr	tmp1, [pmc, #AT91_CKGR_MOR]
 	orr	tmp1, tmp1, #AT91_PMC_MOSCSEL
@@ -400,6 +414,14 @@ ENTRY(at91_pm_ulp1_mode)
 	str	tmp1, [pmc, #AT91_CKGR_MOR]
 
 	wait_moscsels
+
+	/* Switch the master clock source to main clock */
+	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
+	bic	tmp1, tmp1, #AT91_PMC_CSS
+	orr	tmp1, tmp1, #AT91_PMC_CSS_MAIN
+	str	tmp1, [pmc, #AT91_PMC_MCKR]
+
+	wait_mckrdy
 
 	/* Restore PLLA config */
 	ldr	tmp1, .saved_pllar
