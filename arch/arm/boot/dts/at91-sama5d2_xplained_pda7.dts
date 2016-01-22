@@ -75,7 +75,7 @@
 					wakeup-source;
 				};
 
-				atmel_mxt_ts@4a {
+				atmel_mxt_ts@4c {
 					compatible = "atmel,atmel_mxt_ts";
 					reg = <0x4c>;
 					interrupt-parent = <&pioA>;
