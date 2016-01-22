@@ -44,9 +44,11 @@ dtb-$(CONFIG_SOC_SAM_V7) += \
 	at91-sama5d2_xplained.dtb \
 	at91-sama5d2_xplained_pda4.dtb \
 	at91-sama5d2_xplained_pda7.dtb \
+	at91-sama5d2_xplained_pda7b.dtb \
 	at91-sama5d3_xplained.dtb \
 	at91-sama5d3_xplained_pda4.dtb \
 	at91-sama5d3_xplained_pda7.dtb \
+	at91-sama5d3_xplained_pda7b.dtb \
 	sama5d31ek.dtb \
 	sama5d31ek_pda4.dtb \
 	sama5d31ek_pda7.dtb \
@@ -77,6 +79,7 @@ dtb-$(CONFIG_SOC_SAM_V7) += \
 	at91-sama5d4_xplained_hdmi.dtb \
 	at91-sama5d4_xplained_pda4.dtb \
 	at91-sama5d4_xplained_pda7.dtb \
+	at91-sama5d4_xplained_pda7b.dtb \
 	at91-sama5d4ek.dtb
 dtb-$(CONFIG_ARCH_ATLAS6) += \
 	atlas6-evb.dtb
