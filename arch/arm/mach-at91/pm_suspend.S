@@ -121,15 +121,57 @@ ENTRY(at91_pm_suspend_in_sram)
 	tst	r0, #AT91_PM_SLOW_CLOCK
 	beq	standby_mode
 
+	ldr	pmc, .pmc_base
+
+	/* Save PMC_MCKR config */
+	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
+	str	tmp1, .saved_mckr
+
+	/* Switch master clock source to slow clock */
+	bic	tmp1, tmp1, #AT91_PMC_CSS
+	str	tmp1, [pmc, #AT91_PMC_MCKR]
+
+	wait_mckrdy
+
+	/* Save PLLA config and Disable PLLA */
+	ldr	tmp1, [pmc, #AT91_CKGR_PLLAR]
+	str	tmp1, .saved_pllar
+
+	mov	tmp1, #AT91_PMC_PLLCOUNT
+	orr	tmp1, tmp1, #(1 << 29)
+	str	tmp1, [pmc, #AT91_CKGR_PLLAR]
+
 	ldr	r0, .ulp_mode
 	tst	r0, #AT91_PM_ULP1_MODE
 	beq	ulp0_mode
 
 	bl	at91_pm_ulp1_mode
-	b	pm_exit
+	b	ulp_exit
 
 ulp0_mode:
 	bl	at91_pm_ulp0_mode
+
+ulp_exit:
+	ldr	pmc, .pmc_base
+
+	/* Restore PLLA config */
+	ldr	tmp1, .saved_pllar
+	str	tmp1, [pmc, #AT91_CKGR_PLLAR]
+
+	tst	tmp1, #(AT91_PMC_MUL &  0xff0000)
+	bne	1f
+	tst	tmp1, #(AT91_PMC_MUL & ~0xff0000)
+	beq	2f
+1:
+	wait_pllalock
+2:
+
+	/* Restore PMC_MCKR config */
+	ldr	tmp1, .saved_mckr
+	str	tmp1, [pmc, #AT91_PMC_MCKR]
+
+	wait_mckrdy
+
 	b	pm_exit
 
 standby_mode:
@@ -278,24 +320,6 @@ ENDPROC(at91_sramc_self_refresh)
 ENTRY(at91_pm_ulp0_mode)
 	ldr	pmc, .pmc_base
 
-	/* Save PMC_MCKR config */
-	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
-	str	tmp1, .saved_mckr
-
-	/* Switch master clock source to slow clock */
-	bic	tmp1, tmp1, #AT91_PMC_CSS
-	str	tmp1, [pmc, #AT91_PMC_MCKR]
-
-	wait_mckrdy
-
-	/* Save PLLA config, then and disable PLLA */
-	ldr	tmp1, [pmc, #AT91_CKGR_PLLAR]
-	str	tmp1, .saved_pllar
-
-	mov	tmp1, #AT91_PMC_PLLCOUNT
-	orr	tmp1, tmp1, #(1 << 29)
-	str	tmp1, [pmc, #AT91_CKGR_PLLAR]
-
 	/* Turn off the main oscillator */
 	ldr	tmp1, [pmc, #AT91_CKGR_MOR]
 	bic	tmp1, tmp1, #AT91_PMC_MOSCEN
@@ -313,24 +337,6 @@ ENTRY(at91_pm_ulp0_mode)
 
 	wait_moscrdy
 
-	/* Restore PLLA config */
-	ldr	tmp1, .saved_pllar
-	str	tmp1, [pmc, #AT91_CKGR_PLLAR]
-
-	tst	tmp1, #(AT91_PMC_MUL &  0xff0000)
-	bne	1f
-	tst	tmp1, #(AT91_PMC_MUL & ~0xff0000)
-	beq	2f
-1:
-	wait_pllalock
-2:
-
-	/* Restore PMC_MCKR config */
-	ldr	tmp1, .saved_mckr
-	str	tmp1, [pmc, #AT91_PMC_MCKR]
-
-	wait_mckrdy
-
 	mov	pc, lr
 ENDPROC(at91_pm_ulp0_mode)
 
@@ -339,23 +345,6 @@ ENDPROC(at91_pm_ulp0_mode)
  */
 ENTRY(at91_pm_ulp1_mode)
 	ldr	pmc, .pmc_base
-
-	/* Save PMC_MCKR config */
-	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
-	str	tmp1, .saved_mckr
-
-	/* Switch the master clock source to slow clock */
-	bic	tmp1, tmp1, #AT91_PMC_CSS
-	str	tmp1, [pmc, #AT91_PMC_MCKR]
-
-	wait_mckrdy
-
-	/* Save PLLA config, then and disable PLLA */
-	ldr	tmp1, [pmc, #AT91_CKGR_PLLAR]
-	str	tmp1, .saved_pllar
-
-	bic	tmp1, tmp1, #AT91_PMC3_MUL
-	str	tmp1, [pmc, #AT91_CKGR_PLLAR]
 
 	/* Switch main clock source to 12-MHz RC oscillator */
 	ldr	tmp1, [pmc, #AT91_CKGR_MOR]
@@ -419,18 +408,6 @@ ENTRY(at91_pm_ulp1_mode)
 	ldr	tmp1, [pmc, #AT91_PMC_MCKR]
 	bic	tmp1, tmp1, #AT91_PMC_CSS
 	orr	tmp1, tmp1, #AT91_PMC_CSS_MAIN
-	str	tmp1, [pmc, #AT91_PMC_MCKR]
-
-	wait_mckrdy
-
-	/* Restore PLLA config */
-	ldr	tmp1, .saved_pllar
-	str	tmp1, [pmc, #AT91_CKGR_PLLAR]
-
-	wait_pllalock
-
-	/* Restore PMC_MCKR config */
-	ldr	tmp1, .saved_mckr
 	str	tmp1, [pmc, #AT91_PMC_MCKR]
 
 	wait_mckrdy
