@@ -155,7 +155,7 @@ struct atmel_uart_port {
 	u32			rts_high;
 	u32			rts_low;
 	bool			ms_irq_enabled;
-	bool			is_usart;	/* usart or uart */
+	u32			rtor;		/* address of receiver timeout register if it exists */
 	struct timer_list	uart_timer;	/* uart timer */
 
 	bool			suspended;
@@ -1741,17 +1741,19 @@ static void atmel_get_ip_name(struct uart_port *port)
 	int name = atmel_uart_readl(port, ATMEL_US_NAME);
 	u32 version;
 
-	atmel_port->is_usart = false;
+	atmel_port->rtor = 0;
 
 	switch (name) {
 	case 0x55534152: /* USART */
-	case 0x55415254: /* new UART with "timeout" feature: considered as usart */
-		dev_dbg(port->dev, "This is usart\n");
-		atmel_port->is_usart = true;
+		dev_dbg(port->dev, "This version is usart\n");
+		atmel_port->rtor = ATMEL_US_RTOR;
+		break;
+	case 0x55415254: /* new UART with "timeout" feature */
+		dev_dbg(port->dev, "This version is uart with timeout feature\n");
+		atmel_port->rtor = ATMEL_UA_RTOR;
 		break;
 	case 0x44424755:
 		dev_dbg(port->dev, "This is uart\n");
-		atmel_port->is_usart = false;
 		break;
 	default:
 		/* fallback for older SoCs: use version field */
@@ -1760,12 +1762,11 @@ static void atmel_get_ip_name(struct uart_port *port)
 		case 0x302:
 		case 0x10213:
 			dev_dbg(port->dev, "This version is usart\n");
-			atmel_port->is_usart = true;
+			atmel_port->rtor = ATMEL_US_RTOR;
 			break;
 		case 0x203:
 		case 0x10202:
 			dev_dbg(port->dev, "This version is uart\n");
-			atmel_port->is_usart = false;
 			break;
 		default:
 			dev_err(port->dev, "Not supported ip name nor version, set to uart\n");
@@ -1912,12 +1913,12 @@ static int atmel_startup(struct uart_port *port)
 
 	if (atmel_use_pdc_rx(port)) {
 		/* set UART timeout */
-		if (!atmel_port->is_usart) {
+		if (!atmel_port->rtor) {
 			mod_timer(&atmel_port->uart_timer,
 					jiffies + uart_poll_timeout(port));
 		/* set USART timeout */
 		} else {
-			atmel_uart_writel(port, ATMEL_US_RTOR, PDC_RX_TIMEOUT);
+			atmel_uart_writel(port, atmel_port->rtor, PDC_RX_TIMEOUT);
 			atmel_uart_writel(port, ATMEL_US_CR, ATMEL_US_STTTO);
 
 			atmel_uart_writel(port, ATMEL_US_IER,
@@ -1927,12 +1928,12 @@ static int atmel_startup(struct uart_port *port)
 		atmel_uart_writel(port, ATMEL_PDC_PTCR, ATMEL_PDC_RXTEN);
 	} else if (atmel_use_dma_rx(port)) {
 		/* set UART timeout */
-		if (!atmel_port->is_usart) {
+		if (!atmel_port->rtor) {
 			mod_timer(&atmel_port->uart_timer,
 					jiffies + uart_poll_timeout(port));
 		/* set USART timeout */
 		} else {
-			atmel_uart_writel(port, ATMEL_US_RTOR, PDC_RX_TIMEOUT);
+			atmel_uart_writel(port, atmel_port->rtor, PDC_RX_TIMEOUT);
 			atmel_uart_writel(port, ATMEL_US_CR, ATMEL_US_STTTO);
 
 			atmel_uart_writel(port, ATMEL_US_IER,
