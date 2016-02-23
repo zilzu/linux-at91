@@ -548,6 +548,7 @@
 
 				pinctrl_macb0_phy_irq: macb0_phy_irq {
 					pinmux = <PIN_PC9__GPIO>;
+					bias-disable;
 				};
 
 				pinctrl_macb0_rmii: macb0_rmii {
