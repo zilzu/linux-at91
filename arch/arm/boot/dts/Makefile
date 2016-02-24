@@ -20,9 +20,9 @@ dtb-$(CONFIG_SOC_SAM_V4_V5) += \
 	tny_a9263.dtb \
 	usb_a9263.dtb \
 	at91-foxg20.dtb \
+	at91-kizbox.dtb \
 	at91sam9g20ek.dtb \
 	at91sam9g20ek_2mmc.dtb \
-	kizbox.dtb \
 	tny_a9g20.dtb \
 	usb_a9g20.dtb \
 	usb_a9g20_lpw.dtb \
@@ -31,20 +31,55 @@ dtb-$(CONFIG_SOC_SAM_V4_V5) += \
 	at91sam9n12ek.dtb \
 	at91sam9rlek.dtb \
 	at91-ariag25.dtb \
+	at91-ariettag25.dtb \
 	at91-cosino_mega2560.dtb \
+	at91-kizboxmini.dtb \
 	at91sam9g15ek.dtb \
 	at91sam9g25ek.dtb \
 	at91sam9g35ek.dtb \
 	at91sam9x25ek.dtb \
 	at91sam9x35ek.dtb
 dtb-$(CONFIG_SOC_SAM_V7) += \
+	at91-kizbox2.dtb \
+	at91-sama5d2_xplained.dtb \
+	at91-sama5d2_xplained_pda4.dtb \
+	at91-sama5d2_xplained_pda7.dtb \
+	at91-sama5d2_xplained_pda7b.dtb \
 	at91-sama5d3_xplained.dtb \
+	at91-sama5d3_xplained_pda4.dtb \
+	at91-sama5d3_xplained_pda7.dtb \
+	at91-sama5d3_xplained_pda7b.dtb \
 	sama5d31ek.dtb \
+	sama5d31ek_pda4.dtb \
+	sama5d31ek_pda7.dtb \
+	sama5d31ek_revc.dtb \
+	sama5d31ek_revc_pda4.dtb \
+	sama5d31ek_revc_pda7.dtb \
 	sama5d33ek.dtb \
+	sama5d33ek_pda4.dtb \
+	sama5d33ek_pda7.dtb \
+	sama5d33ek_revc.dtb \
+	sama5d33ek_revc_pda4.dtb \
+	sama5d33ek_revc_pda7.dtb \
 	sama5d34ek.dtb \
+	sama5d34ek_pda4.dtb \
+	sama5d34ek_pda7.dtb \
+	sama5d34ek_revc.dtb \
+	sama5d34ek_revc_pda4.dtb \
+	sama5d34ek_revc_pda7.dtb \
 	sama5d35ek.dtb \
+	sama5d35ek_revc.dtb \
 	sama5d36ek.dtb \
+	sama5d36ek_pda4.dtb \
+	sama5d36ek_pda7.dtb \
+	sama5d36ek_revc.dtb \
+	sama5d36ek_revc_pda4.dtb \
+	sama5d36ek_revc_pda7.dtb \
 	at91-sama5d4_xplained.dtb \
+	at91-sama5d4_xplained_hdmi.dtb \
+	at91-sama5d4_xplained_pda4.dtb \
+	at91-sama5d4_xplained_pda7.dtb \
+	at91-sama5d4_xplained_pda7b.dtb \
 	at91-sama5d4ek.dtb
 dtb-$(CONFIG_ARCH_ATLAS6) += \
 	atlas6-evb.dtb
