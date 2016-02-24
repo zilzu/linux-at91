@@ -65,6 +65,12 @@ module_param(on_flash_bbt, int, 0);
 
 struct atmel_nand_caps {
 	bool pmecc_correct_erase_page;
+	uint8_t pmecc_max_correction;
+	bool has_hsmc_clk;
+};
+
+struct atmel_nand_nfc_caps {
+	uint32_t rb_mask;
 };
 
 /* oob layout for large page size
@@ -101,8 +107,6 @@ struct atmel_nfc {
 	bool			use_nfc_sram;
 	bool			write_by_sram;
 
-	struct clk		*clk;
-
 	bool			is_initialized;
 	struct completion	comp_ready;
 	struct completion	comp_cmd_done;
@@ -111,6 +115,7 @@ struct atmel_nfc {
 	/* Point to the sram bank which include readed data via NFC */
 	void			*data_in_sram;
 	bool			will_write_sram;
+	const struct atmel_nand_nfc_caps *caps;
 };
 static struct atmel_nfc	nand_nfc;
 
@@ -127,6 +132,7 @@ struct atmel_nand_host {
 	struct dma_chan		*dma_chan;
 
 	struct atmel_nfc	*nfc;
+	struct clk		*clk;
 
 	struct atmel_nand_caps	*caps;
 	bool			has_pmecc;
@@ -141,6 +147,7 @@ struct atmel_nand_host {
 	int			pmecc_cw_len;	/* Length of codeword */
 
 	void __iomem		*pmerrloc_base;
+	void __iomem		*pmerrloc_el_base;
 	void __iomem		*pmecc_rom_base;
 
 	/* lookup table for alpha_to and index_of */
@@ -467,6 +474,7 @@ static void atmel_write_buf(struct mtd_info *mtd, const u8 *buf, int len)
  *                8-bits                13-bytes                 14-bytes
  *               12-bits                20-bytes                 21-bytes
  *               24-bits                39-bytes                 42-bytes
+ *               32-bits                52-bytes                 56-bytes
  */
 static int pmecc_get_ecc_bytes(int cap, int sector_size)
 {
@@ -812,7 +820,7 @@ static void pmecc_correct_data(struct mtd_info *mtd, uint8_t *buf, uint8_t *ecc,
 	sector_size = host->pmecc_sector_size;
 
 	while (err_nbr) {
-		tmp = pmerrloc_readl_el_relaxed(host->pmerrloc_base, i) - 1;
+		tmp = pmerrloc_readl_el_relaxed(host->pmerrloc_el_base, i) - 1;
 		byte_pos = tmp / 8;
 		bit_pos  = tmp % 8;
 
@@ -824,7 +832,7 @@ static void pmecc_correct_data(struct mtd_info *mtd, uint8_t *buf, uint8_t *ecc,
 			*(buf + byte_pos) ^= (1 << bit_pos);
 
 			pos = sector_num * host->pmecc_sector_size + byte_pos;
-			dev_info(host->dev, "Bit flip in data area, byte_pos: %d, bit_pos: %d, 0x%02x -> 0x%02x\n",
+			dev_dbg(host->dev, "Bit flip in data area, byte_pos: %d, bit_pos: %d, 0x%02x -> 0x%02x\n",
 				pos, bit_pos, err_byte, *(buf + byte_pos));
 		} else {
 			/* Bit flip in OOB area */
@@ -834,7 +842,7 @@ static void pmecc_correct_data(struct mtd_info *mtd, uint8_t *buf, uint8_t *ecc,
 			ecc[tmp] ^= (1 << bit_pos);
 
 			pos = tmp + nand_chip->ecc.layout->eccpos[0];
-			dev_info(host->dev, "Bit flip in OOB, oob_byte_pos: %d, bit_pos: %d, 0x%02x -> 0x%02x\n",
+			dev_dbg(host->dev, "Bit flip in OOB, oob_byte_pos: %d, bit_pos: %d, 0x%02x -> 0x%02x\n",
 				pos, bit_pos, err_byte, ecc[tmp]);
 		}
 
@@ -1015,6 +1023,9 @@ static void atmel_pmecc_core_init(struct mtd_info *mtd)
 	case 24:
 		val = PMECC_CFG_BCH_ERR24;
 		break;
+	case 32:
+		val = PMECC_CFG_BCH_ERR32;
+		break;
 	}
 
 	if (host->pmecc_sector_size == 512)
@@ -1076,6 +1087,9 @@ static int pmecc_choose_ecc(struct atmel_nand_host *host,
 
 	/* If device tree doesn't specify, use NAND's minimum ECC parameters */
 	if (host->pmecc_corr_cap == 0) {
+		if (*cap > host->caps->pmecc_max_correction)
+			return -EINVAL;
+
 		/* use the most fitable ecc bits (the near bigger one ) */
 		if (*cap <= 2)
 			host->pmecc_corr_cap = 2;
@@ -1087,6 +1101,8 @@ static int pmecc_choose_ecc(struct atmel_nand_host *host,
 			host->pmecc_corr_cap = 12;
 		else if (*cap <= 24)
 			host->pmecc_corr_cap = 24;
+		else if (*cap <= 32)
+			host->pmecc_corr_cap = 32;
 		else
 			return -EINVAL;
 	}
@@ -1203,6 +1219,8 @@ static int atmel_pmecc_nand_init_params(struct platform_device *pdev,
 		err_no = PTR_ERR(host->pmerrloc_base);
 		goto err;
 	}
+	host->pmerrloc_el_base = host->pmerrloc_base + ATMEL_PMERRLOC_SIGMAx +
+		(host->caps->pmecc_max_correction + 1) * 4;
 
 	if (!host->has_no_lookup_table) {
 		regs_rom = platform_get_resource(pdev, IORESOURCE_MEM, 3);
@@ -1545,10 +1563,16 @@ static int atmel_of_init_port(struct atmel_nand_host *host,
 	 * them from NAND ONFI parameters.
 	 */
 	if (of_property_read_u32(np, "atmel,pmecc-cap", &val) == 0) {
-		if ((val != 2) && (val != 4) && (val != 8) && (val != 12) &&
-				(val != 24)) {
+		if (val > host->caps->pmecc_max_correction) {
 			dev_err(host->dev,
-				"Unsupported PMECC correction capability: %d; should be 2, 4, 8, 12 or 24\n",
+				"Required ECC strength too high: %u max %u\n",
+				val, host->caps->pmecc_max_correction);
+			return -EINVAL;
+		}
+		if ((val != 2)  && (val != 4)  && (val != 8) &&
+		    (val != 12) && (val != 24) && (val != 32)) {
+			dev_err(host->dev,
+				"Required ECC strength not supported: %u\n",
 				val);
 			return -EINVAL;
 		}
@@ -1558,7 +1582,7 @@ static int atmel_of_init_port(struct atmel_nand_host *host,
 	if (of_property_read_u32(np, "atmel,pmecc-sector-size", &val) == 0) {
 		if ((val != 512) && (val != 1024)) {
 			dev_err(host->dev,
-				"Unsupported PMECC sector size: %d; should be 512 or 1024 bytes\n",
+				"Required ECC sector size not supported: %u\n",
 				val);
 			return -EINVAL;
 		}
@@ -1675,9 +1699,9 @@ static irqreturn_t hsmc_interrupt(int irq, void *dev_id)
 		nfc_writel(host->nfc->hsmc_regs, IDR, NFC_SR_XFR_DONE);
 		ret = IRQ_HANDLED;
 	}
-	if (pending & NFC_SR_RB_EDGE) {
+	if (pending & host->nfc->caps->rb_mask) {
 		complete(&host->nfc->comp_ready);
-		nfc_writel(host->nfc->hsmc_regs, IDR, NFC_SR_RB_EDGE);
+		nfc_writel(host->nfc->hsmc_regs, IDR, host->nfc->caps->rb_mask);
 		ret = IRQ_HANDLED;
 	}
 	if (pending & NFC_SR_CMD_DONE) {
@@ -1695,7 +1719,7 @@ static void nfc_prepare_interrupt(struct atmel_nand_host *host, u32 flag)
 	if (flag & NFC_SR_XFR_DONE)
 		init_completion(&host->nfc->comp_xfer_done);
 
-	if (flag & NFC_SR_RB_EDGE)
+	if (flag & host->nfc->caps->rb_mask)
 		init_completion(&host->nfc->comp_ready);
 
 	if (flag & NFC_SR_CMD_DONE)
@@ -1713,7 +1737,7 @@ static int nfc_wait_interrupt(struct atmel_nand_host *host, u32 flag)
 	if (flag & NFC_SR_XFR_DONE)
 		comp[index++] = &host->nfc->comp_xfer_done;
 
-	if (flag & NFC_SR_RB_EDGE)
+	if (flag & host->nfc->caps->rb_mask)
 		comp[index++] = &host->nfc->comp_ready;
 
 	if (flag & NFC_SR_CMD_DONE)
@@ -1781,7 +1805,7 @@ static int nfc_device_ready(struct mtd_info *mtd)
 		dev_err(host->dev, "Lost the interrupt flags: 0x%08x\n",
 				mask & status);
 
-	return status & NFC_SR_RB_EDGE;
+	return status & host->nfc->caps->rb_mask;
 }
 
 static void nfc_select_chip(struct mtd_info *mtd, int chip)
@@ -1954,8 +1978,8 @@ static void nfc_nand_command(struct mtd_info *mtd, unsigned int command,
 		}
 		/* fall through */
 	default:
-		nfc_prepare_interrupt(host, NFC_SR_RB_EDGE);
-		nfc_wait_interrupt(host, NFC_SR_RB_EDGE);
+		nfc_prepare_interrupt(host, host->nfc->caps->rb_mask);
+		nfc_wait_interrupt(host, host->nfc->caps->rb_mask);
 	}
 }
 
@@ -2132,6 +2156,19 @@ static int atmel_nand_probe(struct platform_device *pdev)
 	nand_chip->IO_ADDR_R = host->io_base;
 	nand_chip->IO_ADDR_W = host->io_base;
 
+	if (host->caps->has_hsmc_clk) {
+		host->clk = devm_clk_get(&pdev->dev, NULL);
+		if (IS_ERR(host->clk)) {
+			dev_err(&pdev->dev, "HSMC clock is missing, update your Device Tree");
+			res = PTR_ERR(host->clk);
+			goto err_nand_ioremap;
+		}
+
+		res = clk_prepare_enable(host->clk);
+		if (res)
+			goto err_nand_ioremap;
+	}
+
 	if (nand_nfc.is_initialized) {
 		/* NFC driver is probed and initialized */
 		host->nfc = &nand_nfc;
@@ -2297,32 +2334,63 @@ static int atmel_nand_remove(struct platform_device *pdev)
 	if (host->dma_chan)
 		dma_release_channel(host->dma_chan);
 
+	if (!IS_ERR(host->clk))
+		clk_disable_unprepare(host->clk);
+
 	platform_driver_unregister(&atmel_nand_nfc_driver);
 
 	return 0;
 }
 
+/*
+ * AT91RM9200 does not have PMECC or PMECC Errloc peripherals for
+ * BCH ECC. Combined with the "atmel,has-pmecc", it is used to describe
+ * devices from the SAM9 family that have those.
+ */
 static struct atmel_nand_caps at91rm9200_caps = {
 	.pmecc_correct_erase_page = false,
+	.pmecc_max_correction = 24,
+	.has_hsmc_clk = false,
+};
+
+static struct atmel_nand_caps sama5d3_caps = {
+	.pmecc_correct_erase_page = false,
+	.pmecc_max_correction = 24,
+	.has_hsmc_clk = true,
 };
 
 static struct atmel_nand_caps sama5d4_caps = {
 	.pmecc_correct_erase_page = true,
+	.pmecc_max_correction = 24,
+	.has_hsmc_clk = true,
+};
+
+/*
+ * The PMECC Errloc controller starting in SAMA5D2 is not compatible,
+ * as the increased correction strength requires more registers.
+ */
+static const struct atmel_nand_caps sama5d2_caps = {
+	.pmecc_correct_erase_page = true,
+	.pmecc_max_correction = 32,
+	.has_hsmc_clk = true,
 };
 
 static const struct of_device_id atmel_nand_dt_ids[] = {
 	{ .compatible = "atmel,at91rm9200-nand", .data = &at91rm9200_caps },
 	{ .compatible = "atmel,sama5d4-nand", .data = &sama5d4_caps },
+	{ .compatible = "atmel,sama5d3-nand", .data = &sama5d3_caps },
+	{ .compatible = "atmel,sama5d2-nand", .data = &sama5d2_caps },
 	{ /* sentinel */ }
 };
 
 MODULE_DEVICE_TABLE(of, atmel_nand_dt_ids);
 
+static const struct of_device_id atmel_nand_nfc_match[];
+
 static int atmel_nand_nfc_probe(struct platform_device *pdev)
 {
 	struct atmel_nfc *nfc = &nand_nfc;
 	struct resource *nfc_cmd_regs, *nfc_hsmc_regs, *nfc_sram;
-	int ret;
 
 	nfc_cmd_regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	nfc->base_cmd_regs = devm_ioremap_resource(&pdev->dev, nfc_cmd_regs);
@@ -2352,17 +2420,13 @@ static int atmel_nand_nfc_probe(struct platform_device *pdev)
 		}
 	}
 
+	nfc->caps = (const struct atmel_nand_nfc_caps *)
+		of_match_device(atmel_nand_nfc_match, &pdev->dev)->data;
+	if (NULL == nfc->caps)
+		return -ENODEV;
+
 	nfc_writel(nfc->hsmc_regs, IDR, 0xffffffff);
 	nfc_readl(nfc->hsmc_regs, SR);	/* clear the NFC_SR */
-
-	nfc->clk = devm_clk_get(&pdev->dev, NULL);
-	if (!IS_ERR(nfc->clk)) {
-		ret = clk_prepare_enable(nfc->clk);
-		if (ret)
-			return ret;
-	} else {
-		dev_warn(&pdev->dev, "NFC clock missing, update your Device Tree");
-	}
 
 	nfc->is_initialized = true;
 	dev_info(&pdev->dev, "NFC is probed.\n");
@@ -2370,18 +2434,17 @@ static int atmel_nand_nfc_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int atmel_nand_nfc_remove(struct platform_device *pdev)
-{
-	struct atmel_nfc *nfc = &nand_nfc;
+static const struct atmel_nand_nfc_caps sama5d3_nfc_caps = {
+	.rb_mask = NFC_SR_RB_EDGE0,
+};
 
-	if (!IS_ERR(nfc->clk))
-		clk_disable_unprepare(nfc->clk);
-
-	return 0;
-}
+static const struct atmel_nand_nfc_caps sama5d4_nfc_caps = {
+	.rb_mask = NFC_SR_RB_EDGE3,
+};
 
 static const struct of_device_id atmel_nand_nfc_match[] = {
-	{ .compatible = "atmel,sama5d3-nfc" },
+	{ .compatible = "atmel,sama5d3-nfc", .data = &sama5d3_nfc_caps },
+	{ .compatible = "atmel,sama5d4-nfc", .data = &sama5d4_nfc_caps },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, atmel_nand_nfc_match);
@@ -2392,7 +2455,6 @@ static struct platform_driver atmel_nand_nfc_driver = {
 		.of_match_table = of_match_ptr(atmel_nand_nfc_match),
 	},
 	.probe = atmel_nand_nfc_probe,
-	.remove = atmel_nand_nfc_remove,
 };
 
 static struct platform_driver atmel_nand_driver = {
