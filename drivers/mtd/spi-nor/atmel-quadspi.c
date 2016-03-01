@@ -93,6 +93,8 @@
 #define QSPI_SR_INSTRE                  BIT(10)
 #define QSPI_SR_QSPIENS                 BIT(24)
 
+#define QSPI_SR_CMD_COMPLETED	(QSPI_SR_INSTRE | QSPI_SR_CSR)
+
 /* Bitfields in QSPI_SCR (Serial Clock Register) */
 #define QSPI_SCR_CPOL                   BIT(0)
 #define QSPI_SCR_CPHA                   BIT(1)
@@ -375,6 +377,9 @@ static int atmel_qspi_run_command(struct atmel_qspi *aq,
 			ifr |= QSPI_IFR_CRM;
 	}
 
+	/* Clear pending interrupts */
+	(void)qspi_readl(aq, QSPI_SR);
+
 	/* Set QSPI Instruction Frame registers */
 	atmel_qspi_debug_command(aq, cmd);
 	qspi_writel(aq, QSPI_IAR, iar);
@@ -410,19 +415,19 @@ static int atmel_qspi_run_command(struct atmel_qspi *aq,
 			       32, 1, cmd->rx_buf, cmd->buf_len, false);
 #endif
 no_data:
-	/* Poll INSTRuction End status */
+	/* Poll INSTRuction End and Chip Select Rise flags */
 	sr = qspi_readl(aq, QSPI_SR);
-	if (sr & QSPI_SR_INSTRE)
+	if ((sr & QSPI_SR_CMD_COMPLETED) == QSPI_SR_CMD_COMPLETED)
 		return err;
 
 	/* Wait for INSTRuction End interrupt */
 	reinit_completion(&aq->cmd_completion);
-	aq->pending = 0;
-	qspi_writel(aq, QSPI_IER, QSPI_SR_INSTRE);
+	aq->pending = sr & QSPI_SR_CMD_COMPLETED;
+	qspi_writel(aq, QSPI_IER, QSPI_SR_CMD_COMPLETED);
 	if (!wait_for_completion_timeout(&aq->cmd_completion,
 					 msecs_to_jiffies(1000)))
 		err = -ETIMEDOUT;
-	qspi_writel(aq, QSPI_IDR, QSPI_SR_INSTRE);
+	qspi_writel(aq, QSPI_IDR, QSPI_SR_CMD_COMPLETED);
 
 	return err;
 }
@@ -631,7 +636,7 @@ static irqreturn_t atmel_qspi_interrupt(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	aq->pending |= pending;
-	if (pending & QSPI_SR_INSTRE)
+	if ((aq->pending & QSPI_SR_CMD_COMPLETED) == QSPI_SR_CMD_COMPLETED)
 		complete(&aq->cmd_completion);
 
 	return IRQ_HANDLED;
