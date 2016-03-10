@@ -94,17 +94,25 @@ static int act8945a_get_charger_state(struct regmap *regmap, int *val)
 	state &= APCH_STATE_CSTATE;
 	state >>= APCH_STATE_CSTATE_SHIFT;
 
-	if (state == APCH_STATE_CSTATE_EOC) {
+	switch (state) {
+	case APCH_STATE_CSTATE_PRE:
+	case APCH_STATE_CSTATE_FAST:
+		*val = POWER_SUPPLY_STATUS_CHARGING;
+		break;
+	case APCH_STATE_CSTATE_EOC:
 		if (status & APCH_STATUS_CHGDAT)
 			*val = POWER_SUPPLY_STATUS_FULL;
 		else
+			*val = POWER_SUPPLY_STATUS_CHARGING;
+		break;
+	case APCH_STATE_CSTATE_DISABLED:
+	default:
+		if (!(status & APCH_STATUS_INDAT))
+			*val = POWER_SUPPLY_STATUS_DISCHARGING;
+		else
 			*val = POWER_SUPPLY_STATUS_NOT_CHARGING;
-	} else if ((state == APCH_STATE_CSTATE_FAST) ||
-		   (state == APCH_STATE_CSTATE_PRE)) {
-		*val = POWER_SUPPLY_STATUS_CHARGING;
-	} else {
-		*val = POWER_SUPPLY_STATUS_NOT_CHARGING;
-	}
+		break;
+	};
 
 	return 0;
 }
@@ -129,9 +137,12 @@ static int act8945a_get_charge_type(struct regmap *regmap, int *val)
 		*val = POWER_SUPPLY_CHARGE_TYPE_FAST;
 		break;
 	case APCH_STATE_CSTATE_EOC:
+		*val = POWER_SUPPLY_CHARGE_TYPE_NONE;
+		break;
 	case APCH_STATE_CSTATE_DISABLED:
 	default:
-		*val = POWER_SUPPLY_CHARGE_TYPE_NONE;
+		*val = POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
+		break;
 	}
 
 	return 0;
@@ -140,20 +151,39 @@ static int act8945a_get_charge_type(struct regmap *regmap, int *val)
 static int act8945a_get_battery_health(struct regmap *regmap, int *val)
 {
 	int ret;
-	unsigned int status;
+	unsigned int status, state;
 
 	ret = regmap_read(regmap, ACT8945A_APCH_STATUS, &status);
 	if (ret < 0)
 		return ret;
 
-	if (status & APCH_STATUS_TEMPDAT)
-		*val = POWER_SUPPLY_HEALTH_OVERHEAT;
-	else if (!(status & APCH_STATUS_INDAT))
-		*val = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
-	else if (status & APCH_STATUS_TIMRDAT)
-		*val = POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
-	else
+	ret = regmap_read(regmap, ACT8945A_APCH_STATE, &state);
+	if (ret < 0)
+		return ret;
+
+	state &= APCH_STATE_CSTATE;
+	state >>= APCH_STATE_CSTATE_SHIFT;
+
+	switch (state) {
+	case APCH_STATE_CSTATE_DISABLED:
+		if (status & APCH_STATUS_INDAT) {
+			if (!(status & APCH_STATUS_TEMPDAT))
+				*val = POWER_SUPPLY_HEALTH_OVERHEAT;
+			else if (status & APCH_STATUS_TIMRDAT)
+				*val = POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
+			else
+				*val = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		} else {
+			*val = POWER_SUPPLY_HEALTH_GOOD;
+		}
+		break;
+	case APCH_STATE_CSTATE_PRE:
+	case APCH_STATE_CSTATE_FAST:
+	case APCH_STATE_CSTATE_EOC:
+	default:
 		*val = POWER_SUPPLY_HEALTH_GOOD;
+		break;
+	}
 
 	return 0;
 }
