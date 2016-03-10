@@ -220,7 +220,7 @@
 
 					pinctrl-names = "default";
 					pinctrl-0 = <&pinctrl_charger_chglev>;
-					active-semi,chglev-gpio = <&pioA 12 GPIO_ACTIVE_HIGH>;
+					active-semi,chglev-gpios = <&pioA 12 GPIO_ACTIVE_HIGH>;
 					active-semi,input-voltage-threshold-microvolt = <6600>;
 					active-semi,precondition-timeout = <40>;
 					active-semi,total-timeout = <3>;
