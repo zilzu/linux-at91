@@ -174,6 +174,7 @@
 #define AT_XDMAC_MBR_UBC_NDV3		(0x3 << 27)	/* Next Descriptor View 3 */
 
 #define AT_XDMAC_MAX_CHAN	0x20
+#define AT_XDMAC_RESIDUE_MAX_RETRIES	5
 
 #define AT_XDMAC_DMA_BUSWIDTHS\
 	(BIT(DMA_SLAVE_BUSWIDTH_UNDEFINED) |\
@@ -894,8 +895,8 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 	struct list_head	*descs_list;
 	unsigned long		flags;
 	enum dma_status		ret;
-	int			residue;
-	u32			cur_nda, mask, value;
+	int			residue, retry;
+	u32			cur_nda, check_nda, cur_ubc, mask, value;
 	u8			dwidth = 0;
 
 	ret = dma_cookie_status(chan, cookie, txstate);
@@ -915,12 +916,10 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 	 */
 	if (!desc->active_xfer) {
 		dma_set_residue(txstate, desc->xfer_size);
-		spin_unlock_irqrestore(&atchan->lock, flags);
-		return ret;
+		goto spin_unlock;
 	}
 
 	residue = desc->xfer_size;
-
 	/*
 	 * Flush FIFO: only relevant when the transfer is source peripheral
 	 * synchronized.
@@ -933,7 +932,42 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 			cpu_relax();
 	}
 
+	/*
+	 * When processing the residue, we need to read two registers but we
+	 * can't do it in an atomic way. AT_XDMAC_CNDA is used to find where
+	 * we stand in the descriptor list and AT_XDMAC_CUBC is used
+	 * to know how many data are remaining for the current descriptor.
+	 * Since the dma channel is not paused to not loose data, between the
+	 * AT_XDMAC_CNDA and AT_XDMAC_CUBC read, we may have change of
+	 * descriptor.
+	 * For that reason, after reading AT_XDMAC_CUBC, we check if we are
+	 * still using the same descriptor by reading a second time
+	 * AT_XDMAC_CNDA. If AT_XDMAC_CNDA has changed, it means we have to
+	 * read again AT_XDMAC_CUBC.
+	 * Memory barriers are used to ensure the read order of the registers.
+	 * A max number of retries is set because unlikely it can never ends if
+	 * we are transferring a lot of data with small buffers.
+	 */
 	cur_nda = at_xdmac_chan_read(atchan, AT_XDMAC_CNDA) & 0xfffffffc;
+	rmb();
+	cur_ubc = at_xdmac_chan_read(atchan, AT_XDMAC_CUBC);
+	for (retry = 0; retry < AT_XDMAC_RESIDUE_MAX_RETRIES; retry++) {
+		rmb();
+		check_nda = at_xdmac_chan_read(atchan, AT_XDMAC_CNDA) & 0xfffffffc;
+
+		if (likely(cur_nda == check_nda))
+			break;
+
+		cur_nda = check_nda;
+		rmb();
+		cur_ubc = at_xdmac_chan_read(atchan, AT_XDMAC_CUBC);
+	}
+
+	if (unlikely(retry >= AT_XDMAC_RESIDUE_MAX_RETRIES)) {
+		ret = DMA_ERROR;
+		goto spin_unlock;
+	}
+
 	/*
 	 * Remove size of all microblocks already transferred and the current
 	 * one. Then add the remaining size to transfer of the current
@@ -946,9 +980,7 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 		if ((desc->lld.mbr_nda & 0xfffffffc) == cur_nda)
 			break;
 	}
-	residue += at_xdmac_chan_read(atchan, AT_XDMAC_CUBC) << dwidth;
-
-	spin_unlock_irqrestore(&atchan->lock, flags);
+	residue += cur_ubc << dwidth;
 
 	dma_set_residue(txstate, residue);
 
@@ -956,6 +988,8 @@ at_xdmac_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 		 "%s: desc=0x%p, tx_dma_desc.phys=%pad, tx_status=%d, cookie=%d, residue=%d\n",
 		 __func__, desc, &desc->tx_dma_desc.phys, ret, cookie, residue);
 
+spin_unlock:
+	spin_unlock_irqrestore(&atchan->lock, flags);
 	return ret;
 }
 
