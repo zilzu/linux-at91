@@ -4,6 +4,10 @@ Required properties:
  - compatible: "active-semi,act8945a", please refer to ../mfd/act8945a.txt.
  - active-semi,chglev-gpios: charge current level phandle with args
    as described in ../gpio/gpio.txt.
+ - active-semi,irq_gpios: specify the charger interrupt input phanle
+   with args as as described in ../gpio/gpio.txt.
+ - active-semi,lbo-gpios: specify the low battery voltage detect phandle
+   with args as as described in ../gpio/gpio.txt.
 
 Optional properties:
  - active-semi,input-voltage-threshold-microvolt: unit: mV;
