@@ -232,18 +232,6 @@ static int sil902x_get_modes(struct drm_connector *connector)
 	int ret;
 	int i;
 
-	ret = regmap_update_bits(regmap, SIL902X_PWR_STATE_CTRL,
-				 SIL902X_AVI_POWER_STATE_MSK,
-				 SIL902X_AVI_POWER_STATE_D(2));
-	if (ret)
-		return ret;
-
-	ret = regmap_write(regmap, SIL902X_SYS_CTRL_DATA,
-			   SIL902X_SYS_CTRL_OUTPUT_HDMI |
-			   SIL902X_SYS_CTRL_PWR_DWN);
-	if (ret)
-		return ret;
-
 	ret = regmap_update_bits(regmap, SIL902X_SYS_CTRL_DATA,
 				 SIL902X_SYS_CTRL_DDC_BUS_REQ,
 				 SIL902X_SYS_CTRL_DDC_BUS_REQ);
