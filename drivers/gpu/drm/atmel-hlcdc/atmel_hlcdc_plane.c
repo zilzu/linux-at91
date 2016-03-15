@@ -359,8 +359,11 @@ atmel_hlcdc_plane_update_general_settings(struct atmel_hlcdc_plane *plane,
 
 	atmel_hlcdc_layer_update_cfg(&plane->layer,
 				     ATMEL_HLCDC_LAYER_DMA_CFG_ID,
-				     ATMEL_HLCDC_LAYER_DMA_BLEN_MASK,
-				     ATMEL_HLCDC_LAYER_DMA_BLEN_INCR16);
+				     ATMEL_HLCDC_LAYER_DMA_BLEN_MASK |
+				     ATMEL_HLCDC_LAYER_DMA_SIF,
+				     ATMEL_HLCDC_LAYER_DMA_BLEN_INCR16 |
+				     (plane->base.type == DRM_PLANE_TYPE_OVERLAY ?
+				      ATMEL_HLCDC_LAYER_DMA_SIF : 0));
 
 	atmel_hlcdc_layer_update_cfg(&plane->layer, layout->general_config,
 				     ATMEL_HLCDC_LAYER_ITER2BL |
