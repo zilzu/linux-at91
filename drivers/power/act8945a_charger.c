@@ -10,6 +10,7 @@
  * published by the Free Software Foundation.
  *
  */
+#include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
@@ -75,8 +76,15 @@ static const char *act8945a_charger_manufacturer = "Active-semi";
 #define APCH_STATE_CSTATE_PRE		0x03
 
 struct act8945a_charger {
+	struct power_supply *psy;
+	struct power_supply_desc desc;
 	struct regmap *regmap;
-	bool battery_temperature;
+	struct work_struct work;
+
+	bool init_done;
+	int irq_pin;
+	int lbo_pin;
+	int chgin_level;
 };
 
 static int act8945a_get_charger_state(struct regmap *regmap, int *val)
@@ -95,17 +103,25 @@ static int act8945a_get_charger_state(struct regmap *regmap, int *val)
 	state &= APCH_STATE_CSTATE;
 	state >>= APCH_STATE_CSTATE_SHIFT;
 
-	if (state == APCH_STATE_CSTATE_EOC) {
+	switch (state) {
+	case APCH_STATE_CSTATE_PRE:
+	case APCH_STATE_CSTATE_FAST:
+		*val = POWER_SUPPLY_STATUS_CHARGING;
+		break;
+	case APCH_STATE_CSTATE_EOC:
 		if (status & APCH_STATUS_CHGDAT)
 			*val = POWER_SUPPLY_STATUS_FULL;
 		else
+			*val = POWER_SUPPLY_STATUS_CHARGING;
+		break;
+	case APCH_STATE_CSTATE_DISABLED:
+	default:
+		if (!(status & APCH_STATUS_INDAT))
+			*val = POWER_SUPPLY_STATUS_DISCHARGING;
+		else
 			*val = POWER_SUPPLY_STATUS_NOT_CHARGING;
-	} else if ((state == APCH_STATE_CSTATE_FAST) ||
-		   (state == APCH_STATE_CSTATE_PRE)) {
-		*val = POWER_SUPPLY_STATUS_CHARGING;
-	} else {
-		*val = POWER_SUPPLY_STATUS_NOT_CHARGING;
-	}
+		break;
+	};
 
 	return 0;
 }
@@ -130,32 +146,169 @@ static int act8945a_get_charge_type(struct regmap *regmap, int *val)
 		*val = POWER_SUPPLY_CHARGE_TYPE_FAST;
 		break;
 	case APCH_STATE_CSTATE_EOC:
+		*val = POWER_SUPPLY_CHARGE_TYPE_NONE;
+		break;
 	case APCH_STATE_CSTATE_DISABLED:
 	default:
-		*val = POWER_SUPPLY_CHARGE_TYPE_NONE;
+		*val = POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
+		break;
 	}
 
 	return 0;
 }
 
-static int act8945a_get_battery_health(struct act8945a_charger *charger,
-				       struct regmap *regmap, int *val)
+static int act8945a_get_battery_health(struct regmap *regmap, int *val)
 {
 	int ret;
-	unsigned int status;
+	unsigned int status, state;
 
 	ret = regmap_read(regmap, ACT8945A_APCH_STATUS, &status);
 	if (ret < 0)
 		return ret;
 
-	if (charger->battery_temperature && !(status & APCH_STATUS_TEMPDAT))
-		*val = POWER_SUPPLY_HEALTH_OVERHEAT;
-	else if (!(status & APCH_STATUS_INDAT))
-		*val = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
-	else if (status & APCH_STATUS_TIMRDAT)
-		*val = POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
-	else
+	ret = regmap_read(regmap, ACT8945A_APCH_STATE, &state);
+	if (ret < 0)
+		return ret;
+
+	state &= APCH_STATE_CSTATE;
+	state >>= APCH_STATE_CSTATE_SHIFT;
+
+	switch (state) {
+	case APCH_STATE_CSTATE_DISABLED:
+		if (status & APCH_STATUS_INDAT) {
+			if (!(status & APCH_STATUS_TEMPDAT))
+				*val = POWER_SUPPLY_HEALTH_OVERHEAT;
+			else if (status & APCH_STATUS_TIMRDAT)
+				*val = POWER_SUPPLY_HEALTH_SAFETY_TIMER_EXPIRE;
+			else
+				*val = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		} else {
+			*val = POWER_SUPPLY_HEALTH_GOOD;
+		}
+		break;
+	case APCH_STATE_CSTATE_PRE:
+	case APCH_STATE_CSTATE_FAST:
+	case APCH_STATE_CSTATE_EOC:
+	default:
 		*val = POWER_SUPPLY_HEALTH_GOOD;
+		break;
+	}
+
+	return 0;
+}
+
+static int act8945a_get_capacity_level(struct act8945a_charger *charger,
+				       struct regmap *regmap, int *val)
+{
+	int ret;
+	unsigned int status, state;
+	int lbo_level = 1;
+
+	if (gpio_is_valid(charger->lbo_pin))
+		lbo_level = gpio_get_value(charger->lbo_pin);
+
+	ret = regmap_read(regmap, ACT8945A_APCH_STATUS, &status);
+	if (ret < 0)
+		return ret;
+
+	ret = regmap_read(regmap, ACT8945A_APCH_STATE, &state);
+	if (ret < 0)
+		return ret;
+
+	state &= APCH_STATE_CSTATE;
+	state >>= APCH_STATE_CSTATE_SHIFT;
+
+	switch (state) {
+	case APCH_STATE_CSTATE_PRE:
+		*val = POWER_SUPPLY_CAPACITY_LEVEL_LOW;
+		break;
+	case APCH_STATE_CSTATE_FAST:
+		if (lbo_level)
+			*val = POWER_SUPPLY_CAPACITY_LEVEL_HIGH;
+		else
+			*val = POWER_SUPPLY_CAPACITY_LEVEL_LOW;
+		break;
+	case APCH_STATE_CSTATE_EOC:
+		if (status & APCH_STATUS_CHGDAT)
+			*val = POWER_SUPPLY_CAPACITY_LEVEL_FULL;
+		else
+			*val = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
+		break;
+	case APCH_STATE_CSTATE_DISABLED:
+	default:
+		*val = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
+		if (!(status & APCH_STATUS_INDAT)) {
+			if (!lbo_level)
+				*val = POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL;
+		}
+		break;
+	}
+
+	return 0;
+}
+
+#define MAX_CURRENT_USB_HIGH	450000
+#define MAX_CURRENT_USB_LOW	90000
+#define MAX_CURRENT_USB_PRE	45000
+/*
+ * Riset(K) = 2336 * (1V/Ichg(mA)) - 0.205
+ * Riset = 2.43K
+ */
+#define MAX_CURRENT_AC_HIGH		886527
+#define MAX_CURRENT_AC_LOW		117305
+#define MAX_CURRENT_AC_HIGH_PRE		88653
+#define MAX_CURRENT_AC_LOW_PRE		11731
+
+static int act8945a_get_current_max(struct act8945a_charger *charger,
+				    struct regmap *regmap, int *val)
+{
+	int ret;
+	unsigned int status, state;
+	unsigned int acin_state;
+
+	ret = regmap_read(regmap, ACT8945A_APCH_STATUS, &status);
+	if (ret < 0)
+		return ret;
+
+	ret = regmap_read(regmap, ACT8945A_APCH_STATE, &state);
+	if (ret < 0)
+		return ret;
+
+	acin_state = (state & APCH_STATE_ACINSTAT) >> 1;
+
+	state &= APCH_STATE_CSTATE;
+	state >>= APCH_STATE_CSTATE_SHIFT;
+
+	switch (state) {
+	case APCH_STATE_CSTATE_PRE:
+		if (acin_state) {
+			if (charger->chgin_level)
+				*val = MAX_CURRENT_AC_HIGH_PRE;
+			else
+				*val = MAX_CURRENT_AC_LOW_PRE;
+		} else {
+			*val = MAX_CURRENT_USB_PRE;
+		}
+		break;
+	case APCH_STATE_CSTATE_FAST:
+		if (acin_state) {
+			if (charger->chgin_level)
+				*val = MAX_CURRENT_AC_HIGH;
+			else
+				*val = MAX_CURRENT_AC_LOW;
+		} else {
+			if (charger->chgin_level)
+				*val = MAX_CURRENT_USB_HIGH;
+			else
+				*val = MAX_CURRENT_USB_LOW;
+		}
+		break;
+	case APCH_STATE_CSTATE_EOC:
+	case APCH_STATE_CSTATE_DISABLED:
+	default:
+		*val = 0;
+		break;
+	}
 
 	return 0;
 }
@@ -165,6 +318,8 @@ static enum power_supply_property act8945a_charger_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER
 };
@@ -188,8 +343,15 @@ static int act8945a_charger_get_property(struct power_supply *psy,
 		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		ret = act8945a_get_battery_health(charger,
+		ret = act8945a_get_battery_health(regmap, &val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY_LEVEL:
+		ret = act8945a_get_capacity_level(charger,
 						  regmap, &val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_MAX:
+		ret = act8945a_get_current_max(charger,
+					       regmap, &val->intval);
 		break;
 	case POWER_SUPPLY_PROP_MODEL_NAME:
 		val->strval = act8945a_charger_model;
@@ -204,13 +366,74 @@ static int act8945a_charger_get_property(struct power_supply *psy,
 	return ret;
 }
 
-static const struct power_supply_desc act8945a_charger_desc = {
-	.name		= "act8945a-charger",
-	.type		= POWER_SUPPLY_TYPE_BATTERY,
-	.get_property	= act8945a_charger_get_property,
-	.properties	= act8945a_charger_props,
-	.num_properties	= ARRAY_SIZE(act8945a_charger_props),
-};
+static int act8945a_enable_interrupt(struct act8945a_charger *charger)
+{
+	struct regmap *regmap = charger->regmap;
+	unsigned char ctrl;
+	int ret;
+
+	ctrl = APCH_CTRL_CHGEOCOUT | APCH_CTRL_CHGEOCIN |
+	       APCH_CTRL_INDIS | APCH_CTRL_INCON |
+	       APCH_CTRL_TEMPOUT | APCH_CTRL_TEMPIN |
+	       APCH_CTRL_TIMRPRE | APCH_CTRL_TIMRTOT;
+	ret = regmap_write(regmap, ACT8945A_APCH_CTRL, ctrl);
+	if (ret)
+		return ret;
+
+	ctrl = APCH_STATUS_CHGSTAT | APCH_STATUS_INSTAT |
+	       APCH_STATUS_TEMPSTAT | APCH_STATUS_TIMRSTAT;
+	ret = regmap_write(regmap, ACT8945A_APCH_STATUS, ctrl);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static unsigned int act8945a_set_supply_type(struct act8945a_charger *charger,
+					     unsigned int *type)
+{
+	unsigned int status, state;
+	int ret;
+
+	ret = regmap_read(charger->regmap, ACT8945A_APCH_STATUS, &status);
+	if (ret < 0)
+		return ret;
+
+	ret = regmap_read(charger->regmap, ACT8945A_APCH_STATE, &state);
+	if (ret < 0)
+		return ret;
+
+	if (status & APCH_STATUS_INDAT) {
+		if (state & APCH_STATE_ACINSTAT)
+			*type = POWER_SUPPLY_TYPE_MAINS;
+		else
+			*type = POWER_SUPPLY_TYPE_USB;
+	} else {
+		*type = POWER_SUPPLY_TYPE_BATTERY;
+	}
+
+	return 0;
+}
+
+static void act8945a_work(struct work_struct *work)
+{
+	struct act8945a_charger *charger =
+			container_of(work, struct act8945a_charger, work);
+
+	act8945a_set_supply_type(charger, &charger->desc.type);
+
+	power_supply_changed(charger->psy);
+}
+
+static irqreturn_t act8945a_status_changed(int irq, void *dev_id)
+{
+	struct act8945a_charger *charger = dev_id;
+
+	if (charger->init_done)
+		schedule_work(&charger->work);
+
+	return IRQ_HANDLED;
+}
 
 #define DEFAULT_TOTAL_TIME_OUT		3
 #define DEFAULT_PRE_TIME_OUT		40
@@ -227,6 +450,7 @@ static int act8945a_charger_config(struct device *dev,
 	u32 pre_time_out;
 	u32 input_voltage_threshold;
 	int chglev_pin;
+	int ret;
 
 	unsigned int value = 0;
 
@@ -235,15 +459,42 @@ static int act8945a_charger_config(struct device *dev,
 		return -EINVAL;
 	}
 
-	charger->battery_temperature = of_property_read_bool(np,
-				"active-semi,check-battery-temperature");
+	charger->irq_pin = of_get_named_gpio(np, "active-semi,irq_gpios", 0);
+	if (gpio_is_valid(charger->irq_pin)) {
+		if (!devm_gpio_request(dev, charger->irq_pin, "irq-pin")) {
+			ret = devm_request_irq(dev,
+					       gpio_to_irq(charger->irq_pin),
+					       act8945a_status_changed,
+					       IRQF_TRIGGER_FALLING,
+					       "irq-pin", charger);
+			if (ret)
+				dev_dbg(dev, "failed to request nIRQ pin IRQ\n");
+		}
+	}
+
+	charger->lbo_pin = of_get_named_gpio(np, "active-semi,lbo-gpios", 0);
+	if (gpio_is_valid(charger->lbo_pin)) {
+		if (!devm_gpio_request(dev, charger->lbo_pin, "lbo-detect")) {
+			ret = devm_request_irq(dev,
+					       gpio_to_irq(charger->lbo_pin),
+					       act8945a_status_changed,
+					       IRQF_TRIGGER_FALLING |
+					       IRQF_TRIGGER_RISING,
+					       "lbo-detect", charger);
+			if (ret)
+				dev_dbg(dev, "failed to request LBO pin IRQ\n");
+		}
+	}
 
 	chglev_pin = of_get_named_gpio_flags(np,
 				"active-semi,chglev-gpios", 0, &flags);
 
 	if (gpio_is_valid(chglev_pin)) {
-		gpio_set_value(chglev_pin,
-			       ((flags == OF_GPIO_ACTIVE_LOW) ? 0 : 1));
+		if (!devm_gpio_request(dev, charger->irq_pin, "chglev-pin")) {
+			charger->chgin_level =
+					(flags == OF_GPIO_ACTIVE_LOW) ? 0 : 1;
+			gpio_set_value(chglev_pin, charger->chgin_level);
+		}
 	}
 
 	if (of_property_read_u32(np,
@@ -314,7 +565,6 @@ static int act8945a_charger_config(struct device *dev,
 static int act8945a_charger_probe(struct platform_device *pdev)
 {
 	struct act8945a_charger *charger;
-	struct power_supply *psy;
 	struct power_supply_config psy_cfg = {};
 	int ret;
 
@@ -332,16 +582,33 @@ static int act8945a_charger_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	charger->desc.name = "act8945a-charger";
+	charger->desc.get_property = act8945a_charger_get_property;
+	charger->desc.properties = act8945a_charger_props;
+	charger->desc.num_properties = ARRAY_SIZE(act8945a_charger_props);
+
+	ret = act8945a_set_supply_type(charger, &charger->desc.type);
+	if (ret)
+		return -EINVAL;
+
 	psy_cfg.of_node	= pdev->dev.parent->of_node;
 	psy_cfg.drv_data = charger;
 
-	psy = devm_power_supply_register(&pdev->dev,
-					 &act8945a_charger_desc,
-					 &psy_cfg);
-	if (IS_ERR(psy)) {
+	charger->psy = devm_power_supply_register(&pdev->dev,
+						  &charger->desc,
+						  &psy_cfg);
+	if (IS_ERR(charger->psy)) {
 		dev_err(&pdev->dev, "failed to register power supply\n");
-		return PTR_ERR(psy);
+		return PTR_ERR(charger->psy);
 	}
+
+	INIT_WORK(&charger->work, act8945a_work);
+
+	ret = act8945a_enable_interrupt(charger);
+	if (ret)
+		return -EIO;
+
+	charger->init_done = true;
 
 	return 0;
 }
