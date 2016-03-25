@@ -589,13 +589,19 @@
 				};
 
 				pinctrl_qspi0_default: qspi0_default {
-					pinmux = <PIN_PA22__QSPI0_SCK>,
-						 <PIN_PA23__QSPI0_CS>,
-						 <PIN_PA24__QSPI0_IO0>,
-						 <PIN_PA25__QSPI0_IO1>,
-						 <PIN_PA26__QSPI0_IO2>,
-						 <PIN_PA27__QSPI0_IO3>;
-					bias-disable;
+					sck_cs {
+						pinmux = <PIN_PA22__QSPI0_SCK>,
+							 <PIN_PA23__QSPI0_CS>;
+						bias-disable;
+					};
+
+					io {
+						pinmux = <PIN_PA24__QSPI0_IO0>,
+							 <PIN_PA25__QSPI0_IO1>,
+							 <PIN_PA26__QSPI0_IO2>,
+							 <PIN_PA27__QSPI0_IO3>;
+						bias-pull-up;
+					};
 				};
 
 				pinctrl_sdmmc0_default: sdmmc0_default {
