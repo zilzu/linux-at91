@@ -155,6 +155,80 @@ static inline struct spi_nor *mtd_to_spi_nor(struct mtd_info *mtd)
 	return mtd->priv;
 }
 
+
+struct spi_nor_address_entry {
+	u8	src_opcode;
+	u8	dst_opcode;
+};
+
+static u8 spi_nor_convert_opcode(u8 opcode,
+				 const struct spi_nor_address_entry *entries,
+				 size_t num_entries)
+{
+	int min, max;
+
+	min = 0;
+	max = num_entries - 1;
+	while (min <= max) {
+		int mid = (min + max) >> 1;
+		const struct spi_nor_address_entry *entry = &entries[mid];
+
+		if (opcode == entry->src_opcode)
+			return entry->dst_opcode;
+
+		if (opcode < entry->src_opcode)
+			max = mid - 1;
+		else
+			min = mid + 1;
+	}
+
+	/* No conversion found */
+	return opcode;
+}
+
+static u8 spi_nor_3to4_opcode(u8 opcode)
+{
+	/* MUST be sorted by 3byte opcode */
+#define ENTRY_3TO4(_opcode)	{ _opcode, _opcode##_4B }
+	static const struct spi_nor_address_entry spi_nor_3to4_table[] = {
+		ENTRY_3TO4(SPINOR_OP_PP),		/* 0x02 */
+		ENTRY_3TO4(SPINOR_OP_READ),		/* 0x03 */
+		ENTRY_3TO4(SPINOR_OP_READ_FAST),	/* 0x0b */
+		ENTRY_3TO4(SPINOR_OP_BE_4K),		/* 0x20 */
+		ENTRY_3TO4(SPINOR_OP_PP_1_1_4),		/* 0x32 */
+		ENTRY_3TO4(SPINOR_OP_PP_1_4_4),		/* 0x38 */
+		ENTRY_3TO4(SPINOR_OP_READ_1_1_2),	/* 0x3b */
+		ENTRY_3TO4(SPINOR_OP_READ_1_1_4),	/* 0x6b */
+		ENTRY_3TO4(SPINOR_OP_READ_1_2_2),	/* 0xbb */
+		ENTRY_3TO4(SPINOR_OP_SE),		/* 0xd8 */
+		ENTRY_3TO4(SPINOR_OP_READ_1_4_4),	/* 0xeb */
+	};
+#undef ENTRY_3TO4
+
+	return spi_nor_convert_opcode(opcode, spi_nor_3to4_table,
+				      ARRAY_SIZE(spi_nor_3to4_table));
+}
+
+static void spi_nor_set_4byte_opcodes(struct spi_nor *nor,
+				      const struct flash_info *info)
+{
+	/* Do some manufacturer fixups first */
+	switch (JEDEC_MFR(info)) {
+	case CFI_MFR_AMD:
+		/* No small sector erase for 4-byte command set */
+		nor->erase_opcode = SPINOR_OP_SE;
+		nor->mtd->erasesize = info->sector_size;
+		break;
+
+	default:
+		break;
+	}
+
+	nor->read_opcode	= spi_nor_3to4_opcode(nor->read_opcode);
+	nor->program_opcode	= spi_nor_3to4_opcode(nor->program_opcode);
+	nor->erase_opcode	= spi_nor_3to4_opcode(nor->erase_opcode);
+}
+
 /* Enable/disable 4-byte addressing mode. */
 static inline int set_4byte(struct spi_nor *nor, struct flash_info *info,
 			    int enable)
@@ -558,7 +632,7 @@ static const struct spi_device_id spi_nor_ids[] = {
 	{ "mx25u6435f",  INFO(0xc22537, 0, 64 * 1024, 128, SECT_4K) },
 	{ "mx25l12805d", INFO(0xc22018, 0, 64 * 1024, 256, 0) },
 	{ "mx25l12855e", INFO(0xc22618, 0, 64 * 1024, 256, 0) },
-	{ "mx25l25635e", INFO(0xc22019, 0, 64 * 1024, 512, 0) },
+	{ "mx25l25635e", INFO(0xc22019, 0, 64 * 1024, 512, SPI_NOR_QUAD_READ) },
 	{ "mx25l25655e", INFO(0xc22619, 0, 64 * 1024, 512, 0) },
 	{ "mx66l51235l", INFO(0xc2201a, 0, 64 * 1024, 1024, SPI_NOR_QUAD_READ) },
 	{ "mx66l1g55g",  INFO(0xc2261b, 0, 64 * 1024, 2048, SPI_NOR_QUAD_READ) },
@@ -889,16 +963,12 @@ static int macronix_dummy2code(u8 read_opcode, u8 read_dummy, u8 *dc)
 {
 	switch (read_opcode) {
 	case SPINOR_OP_READ:
-	case SPINOR_OP_READ4:
 		*dc = 0;
 		break;
 
 	case SPINOR_OP_READ_FAST:
 	case SPINOR_OP_READ_1_1_2:
 	case SPINOR_OP_READ_1_1_4:
-	case SPINOR_OP_READ4_FAST:
-	case SPINOR_OP_READ4_1_1_2:
-	case SPINOR_OP_READ4_1_1_4:
 		switch (read_dummy) {
 		case 6:
 			*dc = 1;
@@ -915,7 +985,6 @@ static int macronix_dummy2code(u8 read_opcode, u8 read_dummy, u8 *dc)
 		break;
 
 	case SPINOR_OP_READ_1_2_2:
-	case SPINOR_OP_READ4_1_2_2:
 		switch (read_dummy) {
 		case 4:
 			*dc = 0;
@@ -934,7 +1003,6 @@ static int macronix_dummy2code(u8 read_opcode, u8 read_dummy, u8 *dc)
 		break;
 
 	case SPINOR_OP_READ_1_4_4:
-	case SPINOR_OP_READ4_1_4_4:
 		switch (read_dummy) {
 		case 4:
 			*dc = 1;
@@ -961,9 +1029,9 @@ static int macronix_dummy2code(u8 read_opcode, u8 read_dummy, u8 *dc)
 
 static int macronix_set_dummy_cycles(struct spi_nor *nor, u8 read_dummy)
 {
-	int ret, sr, cr, mask, val;
+	int ret, sr, mask, val;
 	u16 sr_cr;
-	u8 dc;
+	u8 cr, dc;
 
 	/* Convert the number of dummy cycles into Macronix DC volatile bits */
 	ret = macronix_dummy2code(nor->read_opcode, read_dummy, &dc);
@@ -973,10 +1041,10 @@ static int macronix_set_dummy_cycles(struct spi_nor *nor, u8 read_dummy)
 	mask = GENMASK(7, 6);
 	val = (dc << 6) & mask;
 
-	cr = read_cr(nor);
-	if (cr < 0) {
+	ret = nor->read_reg(nor, SPINOR_OP_RDCR_MX, &cr, 1);
+	if (ret < 0) {
 		dev_err(nor->dev, "error while reading the config register\n");
-		return cr;
+		return ret;
 	}
 
 	if ((cr & mask) == val) {
@@ -1004,8 +1072,8 @@ static int macronix_set_dummy_cycles(struct spi_nor *nor, u8 read_dummy)
 	if (ret)
 		return ret;
 
-	cr = read_cr(nor);
-	if (cr < 0 || (cr & mask) != val) {
+	ret = nor->read_reg(nor, SPINOR_OP_RDCR_MX, &cr, 1);
+	if (ret < 0 || (cr & mask) != val) {
 		dev_err(nor->dev, "Macronix Dummy Cycle bits not updated\n");
 		return -EINVAL;
 	}
@@ -1070,7 +1138,6 @@ static int macronix_set_single_mode(struct spi_nor *nor)
 	 */
 	switch (nor->read_opcode) {
 	case SPINOR_OP_READ:
-	case SPINOR_OP_READ4:
 		read_dummy = 0;
 		break;
 
@@ -1134,21 +1201,16 @@ static int spansion_set_dummy_cycles(struct spi_nor *nor, u8 latency_code)
 	/* SDR dummy cycles */
 	switch (nor->read_opcode) {
 	case SPINOR_OP_READ:
-	case SPINOR_OP_READ4:
 		nor->read_dummy = 0;
 		break;
 
 	case SPINOR_OP_READ_FAST:
 	case SPINOR_OP_READ_1_1_2:
 	case SPINOR_OP_READ_1_1_4:
-	case SPINOR_OP_READ4_FAST:
-	case SPINOR_OP_READ4_1_1_2:
-	case SPINOR_OP_READ4_1_1_4:
 		nor->read_dummy = (latency_code == 3) ? 0 : 8;
 		break;
 
 	case SPINOR_OP_READ_1_2_2:
-	case SPINOR_OP_READ4_1_2_2:
 		switch (latency_code) {
 		default:
 		case 0:
@@ -1166,7 +1228,6 @@ static int spansion_set_dummy_cycles(struct spi_nor *nor, u8 latency_code)
 
 
 	case SPINOR_OP_READ_1_4_4:
-	case SPINOR_OP_READ4_1_4_4:
 		switch (latency_code) {
 		default:
 		case 0:
@@ -1536,7 +1597,6 @@ static int micron_set_single_mode(struct spi_nor *nor)
 	 */
 	switch (nor->read_opcode) {
 	case SPINOR_OP_READ:
-	case SPINOR_OP_READ4:
 		read_dummy = 0;
 		break;
 
@@ -1796,27 +1856,10 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	else if (mtd->size > 0x1000000) {
 		/* enable 4-byte addressing if the device exceeds 16MiB */
 		nor->addr_width = 4;
-		if (JEDEC_MFR(info) == CFI_MFR_AMD) {
-			/* Dedicated 4-byte command set */
-			switch (nor->flash_read) {
-			case SPI_NOR_QUAD:
-				nor->read_opcode = SPINOR_OP_READ4_1_1_4;
-				break;
-			case SPI_NOR_DUAL:
-				nor->read_opcode = SPINOR_OP_READ4_1_1_2;
-				break;
-			case SPI_NOR_FAST:
-				nor->read_opcode = SPINOR_OP_READ4_FAST;
-				break;
-			case SPI_NOR_NORMAL:
-				nor->read_opcode = SPINOR_OP_READ4;
-				break;
-			}
-			nor->program_opcode = SPINOR_OP_PP_4B;
-			/* No small sector erase for 4-byte command set */
-			nor->erase_opcode = SPINOR_OP_SE_4B;
-			mtd->erasesize = info->sector_size;
-		} else
+		if (JEDEC_MFR(info) == CFI_MFR_AMD ||
+		    (np && of_property_read_bool(np, "spi-nor-4byte-opcodes")))
+			spi_nor_set_4byte_opcodes(nor, info);
+		else
 			set_4byte(nor, info, 1);
 	} else {
 		nor->addr_width = 3;

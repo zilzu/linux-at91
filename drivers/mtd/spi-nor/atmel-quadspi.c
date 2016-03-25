@@ -25,15 +25,12 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/delay.h>
-#include <linux/dma-mapping.h>
-#include <linux/dmaengine.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
 #include <linux/mtd/spi-nor.h>
 #include <linux/platform_data/atmel.h>
-#include <linux/platform_data/dma-atmel.h>
 #include <linux/of.h>
 
 #include <linux/io.h>
@@ -96,6 +93,8 @@
 #define QSPI_SR_INSTRE                  BIT(10)
 #define QSPI_SR_QSPIENS                 BIT(24)
 
+#define QSPI_SR_CMD_COMPLETED	(QSPI_SR_INSTRE | QSPI_SR_CSR)
+
 /* Bitfields in QSPI_SCR (Serial Clock Register) */
 #define QSPI_SCR_CPOL                   BIT(0)
 #define QSPI_SCR_CPHA                   BIT(1)
@@ -156,8 +155,6 @@
 struct atmel_qspi {
 	void __iomem		*regs;
 	void __iomem		*mem;
-	dma_addr_t		phys_addr;
-	struct dma_chan		*chan;
 	struct clk		*clk;
 	struct platform_device	*pdev;
 	u32			pending;
@@ -166,7 +163,6 @@ struct atmel_qspi {
 	struct spi_nor		nor;
 	u32			clk_rate;
 	struct completion	cmd_completion;
-	struct completion	dma_completion;
 
 #ifdef DEBUG
 	u8			last_instruction;
@@ -182,8 +178,7 @@ struct atmel_qspi_command {
 			u32	mode:1;
 			u32	dummy:1;
 			u32	data:1;
-			u32	dma:1;
-			u32	reserved:24;
+			u32	reserved:25;
 		}		bits;
 		u32	word;
 	}	enable;
@@ -210,84 +205,10 @@ static inline void qspi_writel(struct atmel_qspi *aq, u32 reg, u32 value)
 }
 
 
-#define QSPI_DMA_THRESHOLD	32
-
-static void atmel_qspi_dma_callback(void *arg)
-{
-	struct completion *dma_completion = arg;
-
-	complete(dma_completion);
-}
-
-static int atmel_qspi_run_dma_transfer(struct atmel_qspi *aq,
-				       const struct atmel_qspi_command *cmd)
-{
-	u32 offset = (cmd->enable.bits.address) ? cmd->address : 0;
-	struct dma_chan *chan = aq->chan;
-	struct device *dev = &aq->pdev->dev;
-	enum dma_data_direction direction;
-	dma_addr_t phys_addr, dst, src;
-	struct dma_async_tx_descriptor *desc;
-	dma_cookie_t cookie;
-	int err = 0;
-
-	if (cmd->tx_buf) {
-		direction = DMA_TO_DEVICE;
-		phys_addr = dma_map_single(dev, (void *)cmd->tx_buf,
-					   cmd->buf_len, direction);
-		src = phys_addr;
-		dst = aq->phys_addr + offset;
-	} else {
-		direction = DMA_FROM_DEVICE;
-		phys_addr = dma_map_single(dev, (void *)cmd->rx_buf,
-					   cmd->buf_len, direction);
-		src = aq->phys_addr + offset;
-		dst = phys_addr;
-	}
-	if (dma_mapping_error(dev, phys_addr))
-		return -ENOMEM;
-
-	desc = chan->device->device_prep_dma_memcpy(chan, dst, src,
-						    cmd->buf_len,
-						    DMA_PREP_INTERRUPT);
-	if (!desc) {
-		err = -ENOMEM;
-		goto unmap_single;
-	}
-
-	reinit_completion(&aq->dma_completion);
-	desc->callback = atmel_qspi_dma_callback;
-	desc->callback_param = &aq->dma_completion;
-	cookie = dmaengine_submit(desc);
-	err = dma_submit_error(cookie);
-	if (err)
-		goto unmap_single;
-	dma_async_issue_pending(chan);
-
-	if (!wait_for_completion_timeout(&aq->dma_completion,
-					 msecs_to_jiffies(1000)))
-		err = -ETIMEDOUT;
-
-	if (dma_async_is_tx_complete(chan, cookie, NULL, NULL) != DMA_COMPLETE)
-		err = -ETIMEDOUT;
-
-	if (err)
-		dmaengine_terminate_all(chan);
-unmap_single:
-	dma_unmap_single(dev, phys_addr, cmd->buf_len, direction);
-
-	return err;
-}
-
 static int atmel_qspi_run_transfer(struct atmel_qspi *aq,
 				   const struct atmel_qspi_command *cmd)
 {
 	void __iomem *ahb_mem;
-
-	/* First try a DMA transfer */
-	if (aq->chan && cmd->enable.bits.dma &&
-	    cmd->buf_len >= QSPI_DMA_THRESHOLD)
-		return atmel_qspi_run_dma_transfer(aq, cmd);
 
 	/* Then fallback to a PIO transfer */
 	ahb_mem = aq->mem;
@@ -456,6 +377,9 @@ static int atmel_qspi_run_command(struct atmel_qspi *aq,
 			ifr |= QSPI_IFR_CRM;
 	}
 
+	/* Clear pending interrupts */
+	(void)qspi_readl(aq, QSPI_SR);
+
 	/* Set QSPI Instruction Frame registers */
 	atmel_qspi_debug_command(aq, cmd);
 	qspi_writel(aq, QSPI_IAR, iar);
@@ -491,19 +415,19 @@ static int atmel_qspi_run_command(struct atmel_qspi *aq,
 			       32, 1, cmd->rx_buf, cmd->buf_len, false);
 #endif
 no_data:
-	/* Poll INSTRuction End status */
+	/* Poll INSTRuction End and Chip Select Rise flags */
 	sr = qspi_readl(aq, QSPI_SR);
-	if (sr & QSPI_SR_INSTRE)
+	if ((sr & QSPI_SR_CMD_COMPLETED) == QSPI_SR_CMD_COMPLETED)
 		return err;
 
 	/* Wait for INSTRuction End interrupt */
 	reinit_completion(&aq->cmd_completion);
-	aq->pending = 0;
-	qspi_writel(aq, QSPI_IER, QSPI_SR_INSTRE);
+	aq->pending = sr & QSPI_SR_CMD_COMPLETED;
+	qspi_writel(aq, QSPI_IER, QSPI_SR_CMD_COMPLETED);
 	if (!wait_for_completion_timeout(&aq->cmd_completion,
 					 msecs_to_jiffies(1000)))
 		err = -ETIMEDOUT;
-	qspi_writel(aq, QSPI_IDR, QSPI_SR_INSTRE);
+	qspi_writel(aq, QSPI_IDR, QSPI_SR_CMD_COMPLETED);
 
 	return err;
 }
@@ -600,7 +524,6 @@ static void atmel_qspi_write(struct spi_nor *nor, loff_t to, size_t len,
 	cmd.enable.bits.instruction = 1;
 	cmd.enable.bits.address = nor->addr_width;
 	cmd.enable.bits.data = 1;
-	cmd.enable.bits.dma = 1;
 	cmd.instruction = nor->program_opcode;
 	cmd.address = (u32)to;
 	cmd.tx_buf = write_buf;
@@ -651,7 +574,6 @@ static int atmel_qspi_read(struct spi_nor *nor, loff_t from, size_t len,
 	cmd.enable.bits.address = nor->addr_width;
 	cmd.enable.bits.dummy = (nor->read_dummy > 0);
 	cmd.enable.bits.data = 1;
-	cmd.enable.bits.dma = 1;
 	cmd.instruction = nor->read_opcode;
 	cmd.address = (u32)from;
 	cmd.num_dummy_cycles = nor->read_dummy;
@@ -714,7 +636,7 @@ static irqreturn_t atmel_qspi_interrupt(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	aq->pending |= pending;
-	if (pending & QSPI_SR_INSTRE)
+	if ((aq->pending & QSPI_SR_CMD_COMPLETED) == QSPI_SR_CMD_COMPLETED)
 		complete(&aq->cmd_completion);
 
 	return IRQ_HANDLED;
@@ -726,7 +648,6 @@ static int atmel_qspi_probe(struct platform_device *pdev)
 	struct mtd_part_parser_data ppdata;
 	struct atmel_qspi *aq;
 	struct resource *res;
-	dma_cap_mask_t mask;
 	struct spi_nor *nor;
 	struct mtd_info *mtd;
 	int irq, err = 0;
@@ -743,7 +664,6 @@ static int atmel_qspi_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, aq);
 	init_completion(&aq->cmd_completion);
-	init_completion(&aq->dma_completion);
 	aq->pdev = pdev;
 
 	/* Map the registers */
@@ -763,7 +683,6 @@ static int atmel_qspi_probe(struct platform_device *pdev)
 		err = PTR_ERR(aq->regs);
 		goto exit;
 	}
-	aq->phys_addr = (dma_addr_t)res->start;
 
 	/* Get the peripheral clock */
 	aq->clk = devm_clk_get(&pdev->dev, NULL);
@@ -792,13 +711,6 @@ static int atmel_qspi_probe(struct platform_device *pdev)
 	if (err)
 		goto disable_clk;
 
-	/* Try to get a DMA channel for memcpy() operation */
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_MEMCPY, mask);
-	aq->chan = dma_request_channel(mask, NULL, NULL);
-	if (!aq->chan)
-		dev_warn(&pdev->dev, "no available DMA channel\n");
-
 	/* Setup the spi-nor */
 	nor = &aq->nor;
 	mtd = &aq->mtd;
@@ -816,30 +728,27 @@ static int atmel_qspi_probe(struct platform_device *pdev)
 
 	err = of_property_read_u32(child, "spi-max-frequency", &aq->clk_rate);
 	if (err < 0)
-		goto release_channel;
+		goto disable_clk;
 
 	err = atmel_qspi_init(aq);
 	if (err)
-		goto release_channel;
+		goto disable_clk;
 
 	nor->dev->of_node = child;
 	err = spi_nor_scan(nor, NULL, SPI_NOR_QUAD);
 	nor->dev->of_node = np;
 	if (err)
-		goto release_channel;
+		goto disable_clk;
 
 	ppdata.of_node = child;
 	err = mtd_device_parse_register(mtd, NULL, &ppdata, NULL, 0);
 	if (err)
-		goto release_channel;
+		goto disable_clk;
 
 	of_node_put(child);
 
 	return 0;
 
-release_channel:
-	if (aq->chan)
-		dma_release_channel(aq->chan);
 disable_clk:
 	clk_disable_unprepare(aq->clk);
 exit:
@@ -854,8 +763,6 @@ static int atmel_qspi_remove(struct platform_device *pdev)
 
 	mtd_device_unregister(&aq->mtd);
 	qspi_writel(aq, QSPI_CR, QSPI_CR_QSPIDIS);
-	if (aq->chan)
-		dma_release_channel(aq->chan);
 	clk_disable_unprepare(aq->clk);
 	return 0;
 }
