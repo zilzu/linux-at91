@@ -1029,9 +1029,9 @@ static int macronix_dummy2code(u8 read_opcode, u8 read_dummy, u8 *dc)
 
 static int macronix_set_dummy_cycles(struct spi_nor *nor, u8 read_dummy)
 {
-	int ret, sr, cr, mask, val;
+	int ret, sr, mask, val;
 	u16 sr_cr;
-	u8 dc;
+	u8 cr, dc;
 
 	/* Convert the number of dummy cycles into Macronix DC volatile bits */
 	ret = macronix_dummy2code(nor->read_opcode, read_dummy, &dc);
@@ -1041,10 +1041,10 @@ static int macronix_set_dummy_cycles(struct spi_nor *nor, u8 read_dummy)
 	mask = GENMASK(7, 6);
 	val = (dc << 6) & mask;
 
-	cr = read_cr(nor);
-	if (cr < 0) {
+	ret = nor->read_reg(nor, SPINOR_OP_RDCR_MX, &cr, 1);
+	if (ret < 0) {
 		dev_err(nor->dev, "error while reading the config register\n");
-		return cr;
+		return ret;
 	}
 
 	if ((cr & mask) == val) {
@@ -1072,8 +1072,8 @@ static int macronix_set_dummy_cycles(struct spi_nor *nor, u8 read_dummy)
 	if (ret)
 		return ret;
 
-	cr = read_cr(nor);
-	if (cr < 0 || (cr & mask) != val) {
+	ret = nor->read_reg(nor, SPINOR_OP_RDCR_MX, &cr, 1);
+	if (ret < 0 || (cr & mask) != val) {
 		dev_err(nor->dev, "Macronix Dummy Cycle bits not updated\n");
 		return -EINVAL;
 	}

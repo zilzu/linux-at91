@@ -62,6 +62,9 @@
 #define SPINOR_OP_EN4B		0xb7	/* Enter 4-byte mode */
 #define SPINOR_OP_EX4B		0xe9	/* Exit 4-byte mode */
 
+/* Used for Macronix flashes only. */
+#define SPINOR_OP_RDCR_MX	0x15	/* Read configuration register */
+
 /* Used for Spansion flashes only. */
 #define SPINOR_OP_BRWR		0x17	/* Bank register write */
 
