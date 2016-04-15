@@ -15,10 +15,12 @@
  */
 
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/mmc/host.h>
+#include <linux/mmc/slot-gpio.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -37,8 +39,52 @@ struct sdhci_at91_priv {
 	struct clk *mainck;
 };
 
+static void sdhci_at91_set_clock(struct sdhci_host *host, unsigned int clock)
+{
+	u16 clk;
+	unsigned long timeout;
+
+	host->mmc->actual_clock = 0;
+
+	/*
+	 * There is no requirement to disable the internal clock before
+	 * changing the SD clock configuration. Moreover, disabling the
+	 * internal clock, changing the configuration and re-enabling the
+	 * internal clock causes some bugs. It can prevent to get the internal
+	 * clock stable flag ready and an unexpected switch to the base clock
+	 * when using presets.
+	 */
+	clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	clk &= SDHCI_CLOCK_INT_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+	if (clock == 0)
+		return;
+
+	clk = sdhci_calc_clk(host, clock, &host->mmc->actual_clock);
+
+	clk |= SDHCI_CLOCK_INT_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+	/* Wait max 20 ms */
+	timeout = 20;
+	while (!((clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL))
+		& SDHCI_CLOCK_INT_STABLE)) {
+		if (timeout == 0) {
+			pr_err("%s: Internal clock never stabilised.\n",
+			       mmc_hostname(host->mmc));
+			return;
+		}
+		timeout--;
+		mdelay(1);
+	}
+
+	clk |= SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+}
+
 static const struct sdhci_ops sdhci_at91_sama5d2_ops = {
-	.set_clock		= sdhci_set_clock,
+	.set_clock		= sdhci_at91_set_clock,
 	.set_bus_width		= sdhci_set_bus_width,
 	.reset			= sdhci_reset,
 	.set_uhs_signaling	= sdhci_set_uhs_signaling,
@@ -46,7 +92,6 @@ static const struct sdhci_ops sdhci_at91_sama5d2_ops = {
 
 static const struct sdhci_pltfm_data soc_data_sama5d2 = {
 	.ops = &sdhci_at91_sama5d2_ops,
-	.quirks2 = SDHCI_QUIRK2_NEED_DELAY_AFTER_INT_CLK_RST,
 };
 
 static const struct of_device_id sdhci_at91_dt_match[] = {
@@ -234,6 +279,25 @@ static int sdhci_at91_probe(struct platform_device *pdev)
 	if (ret)
 		goto pm_runtime_disable;
 
+	/*
+	 * When calling sdhci_runtime_suspend_host(), the sdhci layer makes
+	 * the assumption that all the clocks of the controller are disabled.
+	 * It means we can't get irq from it when it is runtime suspended.
+	 * For that reason, it is not planned to wake-up on a card detect irq
+	 * from the controller.
+	 * If we want to use runtime PM and to be able to wake-up on card
+	 * insertion, we have to use a GPIO for the card detection or we can
+	 * use polling. Be aware that using polling will resume/suspend the
+	 * controller between each attempt.
+	 * Disable SDHCI_QUIRK_BROKEN_CARD_DETECTION to be sure nobody tries
+	 * to enable polling via device tree with broken-cd property.
+	 */
+	if (!(host->mmc->caps & MMC_CAP_NONREMOVABLE) &&
+	    IS_ERR_VALUE(mmc_gpio_get_cd(host->mmc))) {
+		host->mmc->caps |= MMC_CAP_NEEDS_POLL;
+		host->quirks &= ~SDHCI_QUIRK_BROKEN_CARD_DETECTION;
+	}
+
 	pm_runtime_put_autosuspend(&pdev->dev);
 
 	return 0;
@@ -241,6 +305,7 @@ static int sdhci_at91_probe(struct platform_device *pdev)
 pm_runtime_disable:
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_put_noidle(&pdev->dev);
 clocks_disable_unprepare:
 	clk_disable_unprepare(priv->gck);
 	clk_disable_unprepare(priv->mainck);
