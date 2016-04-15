@@ -1,7 +1,7 @@
 VERSION = 4
 PATCHLEVEL = 1
 SUBLEVEL = 0
-EXTRAVERSION = -linux4sam_5.2
+EXTRAVERSION = -linux4sam_5.3
 NAME = Hurr durr I'ma sheep
 
 # *DOCUMENTATION*
