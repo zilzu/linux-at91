@@ -25,6 +25,9 @@
 		serial1 = &usart0;
 		serial2 = &usart1;
 		serial3 = &usart2;
+		serial4 = &usart3;
+		serial5 = &uart0;
+		serial6 = &uart1;
 		gpio0 = &pioA;
 		gpio1 = &pioB;
 		gpio2 = &pioC;
@@ -693,7 +696,9 @@
 				reg = <0xf801c000 0x200>;
 				interrupts = <5 IRQ_TYPE_LEVEL_HIGH 5>;
 				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_usart0>;
+				pinctrl-0 = <&pinctrl_usart0 &pinctrl_usart0_rts>;
+				linux,rs485-enabled-at-boot-time;
+				rs485-rts-delay = <0 0>;
 				status = "disabled";
 			};
 
@@ -702,7 +707,9 @@
 				reg = <0xf8020000 0x200>;
 				interrupts = <6 IRQ_TYPE_LEVEL_HIGH 5>;
 				pinctrl-names = "default";
-				pinctrl-0 = <&pinctrl_usart1>;
+				pinctrl-0 = <&pinctrl_usart1 &pinctrl_usart1_rts>;
+				linux,rs485-enabled-at-boot-time;
+				rs485-rts-delay = <0 0>;
 				status = "disabled";
 			};
 
@@ -712,6 +719,15 @@
 				interrupts = <7 IRQ_TYPE_LEVEL_HIGH 5>;
 				pinctrl-names = "default";
 				pinctrl-0 = <&pinctrl_usart2>;
+				status = "disabled";
+			};
+
+			usart3: serial@f8028000 {
+				compatible = "atmel,at91sam9260-usart";
+				reg = <0xf8028000 0x200>;
+				interrupts = <8 IRQ_TYPE_LEVEL_HIGH 5>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&pinctrl_usart3>;
 				status = "disabled";
 			};
 
@@ -936,7 +952,7 @@
 				reg = <0xf8034000 0x300>;
 				interrupts = <18 IRQ_TYPE_LEVEL_HIGH 4>;
 				#pwm-cells = <3>;
-				status = "disabled";
+				status = "okay";
 			};
 		};
 

@@ -53,7 +53,7 @@
 			};
 
 			usart0: serial@f801c000 {
-				status = "okay";
+				status = "disable";
 			};
 
 			usb2: gadget@f803c000 {
@@ -76,9 +76,9 @@
 			};
 
 			adc0: adc@f804c000 {
-				atmel,adc-clock-rate = <1000000>;
-				atmel,adc-ts-wires = <4>;
-				atmel,adc-ts-pressure-threshold = <10000>;
+				//atmel,adc-clock-rate = <1000000>;
+				//atmel,adc-ts-wires = <4>;
+				//atmel,adc-ts-pressure-threshold = <10000>;
 				status = "okay";
 			};
 
@@ -119,7 +119,8 @@
 				status = "okay";
 				cs-gpios = <&pioA 14 0>, <0>, <0>, <0>;
 				m25p80@0 {
-					compatible = "atmel,at25df321a";
+					/*compatible = "atmel,at25df321a"; */
+					compatible = "spidev";
 					spi-max-frequency = <50000000>;
 					reg = <0>;
 				};
