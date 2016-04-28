@@ -30,6 +30,16 @@
 				status = "okay";
 			};
 
+			mmc0: mmc@f0008000 {
+				pinctrl-0 = <&pinctrl_mmc0_slot0_clk_cmd_dat0 &pinctrl_mmc0_slot0_dat1_3>;
+				status = "okay";
+				slot@0 {
+					reg = <0>;
+					bus-width = <4>;
+					cd-gpios = <&pioA 4 0>;
+				};
+			};
+
 			/* Conflict with ISI PA13 pin, so disable it */
 			mmc1: mmc@f000c000 {
 				status = "disabled";
@@ -89,6 +99,22 @@
 			    pinctrl-names = "default";
 			    pinctrl-0 = <&pinctrl_pwm0>;
 			    status = "okay";
+			};
+
+			gpio_keys {
+				compatible = "gpio-keys";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				upload_btn{
+					label = "SD Upload";
+					linux,code = <0x101>;
+					gpios = <&pioC 30 GPIO_ACTIVE_LOW>;
+				};
+				download_btn{
+					label = "SD Download";
+					linux,code = <0x102>;
+					gpios = <&pioC 31 GPIO_ACTIVE_LOW>;
+				};
 			};
 		};
 	};
